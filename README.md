@@ -64,14 +64,28 @@ Comprehensive pod status recognition with color-coded indicators:
 
 ### Download
 
-Download the latest release for your platform from the [Releases](https://github.com/yourusername/podlogs/releases) page.
+Download the latest release for your platform from the [Releases](../../releases) page.
 
-| Platform | Download |
-|----------|----------|
-| macOS (Apple Silicon) | `PodLogs_x.x.x_aarch64.dmg` |
-| macOS (Intel) | `PodLogs_x.x.x_x64.dmg` |
-| Windows | `PodLogs_x.x.x_x64-setup.exe` |
-| Linux | `PodLogs_x.x.x_amd64.deb` |
+| Platform | Architecture | Download |
+|----------|--------------|----------|
+| macOS | Apple Silicon (M1/M2/M3/M4) | `PodLogs_x.x.x_macos_aarch64.dmg` |
+| macOS | Intel (x64) | `PodLogs_x.x.x_macos_x64.dmg` |
+| Linux | x64 (amd64) | `PodLogs_x.x.x_linux_amd64.deb` |
+| Linux | ARM64 | `PodLogs_x.x.x_linux_arm64.deb` |
+
+AppImage builds are also available for Linux.
+
+### macOS Installation
+
+1. Download the `.dmg` file for your architecture
+2. Open the DMG and drag PodLogs to Applications
+3. On first launch, right-click and select "Open" to bypass Gatekeeper
+
+### Linux Installation (Debian/Ubuntu)
+
+```bash
+sudo dpkg -i PodLogs_x.x.x_linux_amd64.deb
+```
 
 ### Prerequisites
 
