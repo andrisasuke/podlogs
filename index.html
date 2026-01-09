@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PodLogs</title>
+    <script>
+      // Prevent flash by setting theme before CSS loads
+      (function() {
+        var darkBg = '#0F172A';
+        var lightBg = '#FDF6E3'; // Solarized light
+        var stored = localStorage.getItem('podlogs-ui');
+        var theme = 'dark';
+        if (stored) {
+          try {
+            var parsed = JSON.parse(stored);
+            if (parsed.state && parsed.state.theme) {
+              theme = parsed.state.theme;
+            }
+          } catch (e) {}
+        }
+        var isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.className = isDark ? 'dark' : '';
+        document.documentElement.style.backgroundColor = isDark ? darkBg : lightBg;
+
+      })();
+    </script>
+    <style>
+      body, #root {
+        background-color: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

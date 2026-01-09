@@ -1,0 +1,134 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Light Mode - Solarized Light inspired */
+  --bg-primary: #FDF6E3;
+  --bg-secondary: #EEE8D5;
+  --bg-tertiary: #E6DFC6;
+  --text-primary: #073642;
+  --text-secondary: #586E75;
+  --text-muted: #93A1A1;
+  --border: #D3CDB8;
+  --border-subtle: #E6DFC6;
+  --accent-subtle: #D4E9E2;
+  --status-success: #859900;
+  --status-warning: #B58900;
+  --status-error: #DC322F;
+  --status-info: #268BD2;
+  --status-debug: #6C71C4;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.15);
+}
+
+.dark {
+  --bg-primary: #0F172A;
+  --bg-secondary: #1E293B;
+  --bg-tertiary: #334155;
+  --text-primary: #F8FAFC;
+  --text-secondary: #CBD5E1;
+  --text-muted: #64748B;
+  --border: #334155;
+  --border-subtle: #1E293B;
+  --accent-subtle: #0C4A6E;
+  --status-success: #34D399;
+  --status-warning: #FBBF24;
+  --status-error: #F87171;
+  --status-info: #60A5FA;
+  --status-debug: #A78BFA;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+/* Log level backgrounds */
+.log-error {
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+.log-warn {
+  background-color: rgba(245, 158, 11, 0.1);
+}
+
+.log-info {
+  background-color: transparent;
+}
+
+.log-debug {
+  background-color: rgba(139, 92, 246, 0.05);
+}
+
+.dark .log-error {
+  background-color: rgba(248, 113, 113, 0.1);
+}
+
+.dark .log-warn {
+  background-color: rgba(251, 191, 36, 0.1);
+}
+
+.dark .log-debug {
+  background-color: rgba(167, 139, 250, 0.1);
+}
+
+/* Focus styles */
+*:focus-visible {
+  outline: 2px solid #0EA5E9;
+  outline-offset: 2px;
+}
+
+/* Selection */
+::selection {
+  background-color: rgba(14, 165, 233, 0.3);
+}
+
+/* Transitions */
+.transition-theme {
+  transition: background-color 200ms ease-out, color 200ms ease-out, border-color 200ms ease-out;
+}
