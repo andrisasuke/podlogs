@@ -1,0 +1,315 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src-tauri/tauri.conf.json'
+      - 'src/**'
+      - 'src-tauri/src/**'
+      - 'package.json'
+      - '.github/workflows/release.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      should_release: ${{ steps.check_tag.outputs.should_release }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from tauri.conf.json
+        id: get_version
+        run: |
+          VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          VERSION=${{ steps.get_version.outputs.version }}
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "Tag v$VERSION already exists"
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "Tag v$VERSION does not exist, will create release"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+
+  build-macos:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            arch: aarch64
+          - target: x86_64-apple-darwin
+            arch: x64
+
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target ${{ matrix.target }}
+
+      - name: Rename DMG with architecture
+        run: |
+          VERSION=${{ needs.check-version.outputs.version }}
+          DMG_FILE=$(find src-tauri/target/${{ matrix.target }}/release/bundle/dmg -name "*.dmg" | head -1)
+          if [ -f "$DMG_FILE" ]; then
+            NEW_NAME="PodLogs_${VERSION}_macos_${{ matrix.arch }}.dmg"
+            cp "$DMG_FILE" "src-tauri/target/${{ matrix.target }}/release/bundle/dmg/${NEW_NAME}"
+            echo "Renamed to: ${NEW_NAME}"
+          fi
+
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/PodLogs_*.dmg
+          if-no-files-found: error
+
+  build-linux:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rename artifacts with architecture
+        run: |
+          VERSION=${{ needs.check-version.outputs.version }}
+
+          # Rename DEB
+          DEB_FILE=$(find src-tauri/target/release/bundle/deb -name "*.deb" | head -1)
+          if [ -f "$DEB_FILE" ]; then
+            NEW_NAME="PodLogs_${VERSION}_linux_amd64.deb"
+            cp "$DEB_FILE" "src-tauri/target/release/bundle/deb/${NEW_NAME}"
+            echo "Renamed DEB to: ${NEW_NAME}"
+          fi
+
+          # Rename AppImage
+          APPIMAGE_FILE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage" | head -1)
+          if [ -f "$APPIMAGE_FILE" ]; then
+            NEW_NAME="PodLogs_${VERSION}_linux_amd64.AppImage"
+            cp "$APPIMAGE_FILE" "src-tauri/target/release/bundle/appimage/${NEW_NAME}"
+            echo "Renamed AppImage to: ${NEW_NAME}"
+          fi
+
+      - name: Upload Linux DEB
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb-amd64
+          path: src-tauri/target/release/bundle/deb/PodLogs_*.deb
+          if-no-files-found: error
+
+      - name: Upload Linux AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage-amd64
+          path: src-tauri/target/release/bundle/appimage/PodLogs_*.AppImage
+          if-no-files-found: error
+
+  build-linux-arm64:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rename artifacts with architecture
+        run: |
+          VERSION=${{ needs.check-version.outputs.version }}
+
+          # Rename DEB
+          DEB_FILE=$(find src-tauri/target/release/bundle/deb -name "*.deb" | head -1)
+          if [ -f "$DEB_FILE" ]; then
+            NEW_NAME="PodLogs_${VERSION}_linux_arm64.deb"
+            cp "$DEB_FILE" "src-tauri/target/release/bundle/deb/${NEW_NAME}"
+            echo "Renamed DEB to: ${NEW_NAME}"
+          fi
+
+          # Rename AppImage
+          APPIMAGE_FILE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage" | head -1)
+          if [ -f "$APPIMAGE_FILE" ]; then
+            NEW_NAME="PodLogs_${VERSION}_linux_arm64.AppImage"
+            cp "$APPIMAGE_FILE" "src-tauri/target/release/bundle/appimage/${NEW_NAME}"
+            echo "Renamed AppImage to: ${NEW_NAME}"
+          fi
+
+      - name: Upload Linux ARM64 DEB
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb-arm64
+          path: src-tauri/target/release/bundle/deb/PodLogs_*.deb
+          if-no-files-found: error
+
+      - name: Upload Linux ARM64 AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage-arm64
+          path: src-tauri/target/release/bundle/appimage/PodLogs_*.AppImage
+          if-no-files-found: warn
+
+  release:
+    needs: [check-version, build-macos, build-linux, build-linux-arm64]
+    if: |
+      always() &&
+      needs.check-version.outputs.should_release == 'true' &&
+      (needs.build-macos.result == 'success' || needs.build-linux.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List downloaded artifacts
+        run: |
+          echo "=== Downloaded artifacts ==="
+          find artifacts -type f | sort
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.dmg" -o -name "*.deb" -o -name "*.AppImage" \) -exec cp {} release/ \;
+          echo "=== Release files ==="
+          ls -la release/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.check-version.outputs.version }}
+          name: PodLogs v${{ needs.check-version.outputs.version }}
+          body: |
+            ## PodLogs v${{ needs.check-version.outputs.version }}
+
+            A modern Kubernetes pod log viewer desktop application.
+
+            ### Downloads
+
+            | Platform | Architecture | Download |
+            |----------|--------------|----------|
+            | macOS | Apple Silicon (M1/M2/M3/M4) | `PodLogs_${{ needs.check-version.outputs.version }}_macos_aarch64.dmg` |
+            | macOS | Intel (x64) | `PodLogs_${{ needs.check-version.outputs.version }}_macos_x64.dmg` |
+            | Linux | x64 (amd64) | `PodLogs_${{ needs.check-version.outputs.version }}_linux_amd64.deb` |
+            | Linux | ARM64 | `PodLogs_${{ needs.check-version.outputs.version }}_linux_arm64.deb` |
+
+            ### Installation
+
+            **macOS:**
+            1. Download the `.dmg` file for your architecture
+            2. Open the DMG and drag PodLogs to Applications
+            3. On first launch, right-click and select "Open" to bypass Gatekeeper
+
+            **Linux (Debian/Ubuntu):**
+            ```bash
+            # x64
+            sudo dpkg -i PodLogs_${{ needs.check-version.outputs.version }}_linux_amd64.deb
+
+            # ARM64
+            sudo dpkg -i PodLogs_${{ needs.check-version.outputs.version }}_linux_arm64.deb
+            ```
+
+            ### Requirements
+            - A valid `~/.kube/config` file with cluster access
+            - Network connectivity to your Kubernetes clusters
+          draft: false
+          prerelease: false
+          files: release/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
