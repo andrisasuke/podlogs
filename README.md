@@ -7,6 +7,9 @@ A modern, lightweight Kubernetes pod log viewer desktop application built with T
 ![Tauri](https://img.shields.io/badge/Tauri-2.x-blue)
 ![React](https://img.shields.io/badge/React-19.2-61DAFB)
 ![Rust](https://img.shields.io/badge/Rust-1.70+-orange)
+![Vibe Coded](https://img.shields.io/badge/vibe%20coded-100%25-blueviolet)
+
+> **Note:** This entire application was created through 100% vibe coding with [Claude Code](https://claude.ai/code) - from architecture design to implementation, debugging, and documentation.
 
 ## Overview
 
