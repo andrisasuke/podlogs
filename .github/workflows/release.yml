@@ -4,12 +4,7 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'src-tauri/tauri.conf.json'
-      - 'src/**'
-      - 'src-tauri/src/**'
-      - 'package.json'
-      - '.github/workflows/release.yml'
+  workflow_dispatch:  # Allow manual trigger from GitHub UI
 
 permissions:
   contents: write
