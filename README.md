@@ -1,4 +1,4 @@
-# PodLogs
+<h1><img src="src-tauri/icons/icon_128x128.png" width="36" height="36" alt="PodLogs icon" align="center" /> PodLogs</h1>
 
 A modern, lightweight Kubernetes pod log viewer desktop application built with Tauri.
 
@@ -79,7 +79,13 @@ AppImage builds are also available for Linux.
 
 1. Download the `.dmg` file for your architecture
 2. Open the DMG and drag PodLogs to Applications
-3. On first launch, right-click and select "Open" to bypass Gatekeeper
+3. **Important:** Remove the quarantine attribute (required for unsigned apps):
+   ```bash
+   xattr -cr /Applications/PodLogs.app
+   ```
+4. Open PodLogs from Applications
+
+> **Note:** If you see "PodLogs is damaged and can't be opened", run the `xattr` command above. This is a macOS Gatekeeper restriction for apps downloaded from the internet that aren't code-signed.
 
 ### Linux Installation (Debian/Ubuntu)
 

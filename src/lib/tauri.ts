@@ -3,6 +3,7 @@ import type {
   ClusterInfo,
   NamespaceInfo,
   DeploymentInfo,
+  DeploymentDetails,
   PodInfo,
   PodDetails,
 } from '../types/kubernetes';
@@ -54,6 +55,18 @@ export async function getDeployments(
   namespace: string
 ): Promise<DeploymentInfo[]> {
   return invokeWithTimeout<DeploymentInfo[]>('get_deployments', { context, namespace });
+}
+
+export async function getDeploymentDetails(
+  context: string,
+  namespace: string,
+  deploymentName: string
+): Promise<DeploymentDetails> {
+  return invokeWithTimeout<DeploymentDetails>('get_deployment_details', {
+    context,
+    namespace,
+    deploymentName,
+  });
 }
 
 // ============================================

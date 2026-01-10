@@ -17,6 +17,32 @@ export interface DeploymentInfo {
   ready_replicas: number;
 }
 
+export interface DeploymentDetails {
+  name: string;
+  namespace: string;
+  replicas: number;
+  available_replicas: number;
+  ready_replicas: number;
+  updated_replicas: number;
+  strategy: string;
+  min_ready_seconds: number;
+  revision_history_limit: number;
+  creation_timestamp: string | null;
+  labels: Record<string, string>;
+  annotations: Record<string, string>;
+  selector: Record<string, string>;
+  conditions: DeploymentCondition[];
+}
+
+export interface DeploymentCondition {
+  condition_type: string;
+  status: string;
+  reason: string | null;
+  message: string | null;
+  last_update_time: string | null;
+  last_transition_time: string | null;
+}
+
 export interface PodInfo {
   name: string;
   namespace: string;

@@ -84,7 +84,7 @@ jobs:
           DMG_FILE=$(find src-tauri/target/${{ matrix.target }}/release/bundle/dmg -name "*.dmg" | head -1)
           if [ -f "$DMG_FILE" ]; then
             NEW_NAME="PodLogs_${VERSION}_macos_${{ matrix.arch }}.dmg"
-            cp "$DMG_FILE" "src-tauri/target/${{ matrix.target }}/release/bundle/dmg/${NEW_NAME}"
+            mv "$DMG_FILE" "src-tauri/target/${{ matrix.target }}/release/bundle/dmg/${NEW_NAME}"
             echo "Renamed to: ${NEW_NAME}"
           fi
 
@@ -117,7 +117,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
             librsvg2-dev \
             patchelf \
             libssl-dev \
@@ -140,7 +139,7 @@ jobs:
           DEB_FILE=$(find src-tauri/target/release/bundle/deb -name "*.deb" | head -1)
           if [ -f "$DEB_FILE" ]; then
             NEW_NAME="PodLogs_${VERSION}_linux_amd64.deb"
-            cp "$DEB_FILE" "src-tauri/target/release/bundle/deb/${NEW_NAME}"
+            mv "$DEB_FILE" "src-tauri/target/release/bundle/deb/${NEW_NAME}"
             echo "Renamed DEB to: ${NEW_NAME}"
           fi
 
@@ -148,7 +147,7 @@ jobs:
           APPIMAGE_FILE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage" | head -1)
           if [ -f "$APPIMAGE_FILE" ]; then
             NEW_NAME="PodLogs_${VERSION}_linux_amd64.AppImage"
-            cp "$APPIMAGE_FILE" "src-tauri/target/release/bundle/appimage/${NEW_NAME}"
+            mv "$APPIMAGE_FILE" "src-tauri/target/release/bundle/appimage/${NEW_NAME}"
             echo "Renamed AppImage to: ${NEW_NAME}"
           fi
 
@@ -188,7 +187,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
             librsvg2-dev \
             patchelf \
             libssl-dev \
@@ -211,7 +209,7 @@ jobs:
           DEB_FILE=$(find src-tauri/target/release/bundle/deb -name "*.deb" | head -1)
           if [ -f "$DEB_FILE" ]; then
             NEW_NAME="PodLogs_${VERSION}_linux_arm64.deb"
-            cp "$DEB_FILE" "src-tauri/target/release/bundle/deb/${NEW_NAME}"
+            mv "$DEB_FILE" "src-tauri/target/release/bundle/deb/${NEW_NAME}"
             echo "Renamed DEB to: ${NEW_NAME}"
           fi
 
@@ -219,7 +217,7 @@ jobs:
           APPIMAGE_FILE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage" | head -1)
           if [ -f "$APPIMAGE_FILE" ]; then
             NEW_NAME="PodLogs_${VERSION}_linux_arm64.AppImage"
-            cp "$APPIMAGE_FILE" "src-tauri/target/release/bundle/appimage/${NEW_NAME}"
+            mv "$APPIMAGE_FILE" "src-tauri/target/release/bundle/appimage/${NEW_NAME}"
             echo "Renamed AppImage to: ${NEW_NAME}"
           fi
 

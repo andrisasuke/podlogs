@@ -122,3 +122,23 @@ export function usePodDetails(podName: string | null) {
     retry: 0,
   });
 }
+
+export function useDeploymentDetails(deploymentName: string | null) {
+  const queryClient = useQueryClient();
+  const { context, namespace } = useClusterStore();
+  const queryKey = ['deployment-details', context, namespace, deploymentName];
+
+  return useQuery({
+    queryKey,
+    queryFn: async () => {
+      try {
+        return await k8s.getDeploymentDetails(context, namespace, deploymentName!);
+      } catch (error) {
+        reportErrorIfNoCache(queryClient, queryKey, error as Error);
+        throw error;
+      }
+    },
+    enabled: !!context && !!namespace && !!deploymentName,
+    retry: 0,
+  });
+}

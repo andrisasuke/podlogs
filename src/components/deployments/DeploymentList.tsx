@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { clsx } from 'clsx';
 import { Layers } from 'lucide-react';
 import { Input } from '../common/Input';
+import { Button } from '../common/Button';
 import { TableSkeleton } from '../common/Skeleton';
 import { useDeployments } from '../../hooks/useK8s';
 import { useClusterStore } from '../../stores/clusterStore';
@@ -11,14 +12,18 @@ import type { DeploymentInfo } from '../../types/kubernetes';
 export function DeploymentList() {
   const { data: deployments = [], isLoading } = useDeployments();
   const { setDeployment } = useClusterStore();
-  const { setView } = useUIStore();
+  const { setView, selectDeploymentInfo } = useUIStore();
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredDeployments = deployments.filter((d) =>
     d.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleSelectDeployment = (name: string) => {
+  const handleViewInfo = (name: string) => {
+    selectDeploymentInfo(name);
+  };
+
+  const handleRowClick = (name: string) => {
     setDeployment(name);
     setView('pods');
   };
@@ -51,6 +56,7 @@ export function DeploymentList() {
                 <th className="px-4 py-3 w-32 text-center">Available</th>
                 <th className="px-4 py-3 w-32 text-center">Ready</th>
                 <th className="px-4 py-3 w-32">Status</th>
+                <th className="px-6 py-3 w-36 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -58,7 +64,8 @@ export function DeploymentList() {
                 <DeploymentRow
                   key={deployment.name}
                   deployment={deployment}
-                  onClick={() => handleSelectDeployment(deployment.name)}
+                  onClick={() => handleRowClick(deployment.name)}
+                  onViewInfo={() => handleViewInfo(deployment.name)}
                 />
               ))}
             </tbody>
@@ -79,9 +86,10 @@ export function DeploymentList() {
 interface DeploymentRowProps {
   deployment: DeploymentInfo;
   onClick: () => void;
+  onViewInfo: () => void;
 }
 
-function DeploymentRow({ deployment, onClick }: DeploymentRowProps) {
+function DeploymentRow({ deployment, onClick, onViewInfo }: DeploymentRowProps) {
   const isHealthy = deployment.available_replicas === deployment.replicas;
   const isPartial = deployment.available_replicas > 0 && !isHealthy;
 
@@ -133,6 +141,18 @@ function DeploymentRow({ deployment, onClick }: DeploymentRowProps) {
             {isHealthy ? 'Healthy' : isPartial ? 'Degraded' : 'Unhealthy'}
           </span>
         </div>
+      </td>
+      <td className="px-6 py-3 text-right">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            onViewInfo();
+          }}
+        >
+          Info
+        </Button>
       </td>
     </tr>
   );

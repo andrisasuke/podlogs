@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Sidebar } from './Sidebar';
 import { PodList } from '../pods/PodList';
 import { PodDetails } from '../pods/PodDetails';
+import { DeploymentDetails } from '../deployments/DeploymentDetails';
 import { LogViewer } from '../logs/LogViewer';
 import { LogSearch } from '../logs/LogSearch';
 import { DeploymentList } from '../deployments/DeploymentList';
@@ -10,14 +11,15 @@ import { Drawer } from '../common/Drawer';
 import { ConnectionError } from '../common/ErrorDialog';
 import { useUIStore } from '../../stores/uiStore';
 import { useClusterStore } from '../../stores/clusterStore';
-import { usePodDetails } from '../../hooks/useK8s';
+import { usePodDetails, useDeploymentDetails } from '../../hooks/useK8s';
 import { useErrorStore } from '../../stores/errorStore';
 import { useQueryClient } from '@tanstack/react-query';
 
 export function MainLayout() {
-  const { currentView, selectedPod, drawerOpen, setDrawerOpen, logViewerPod, selectPod, setView } = useUIStore();
+  const { currentView, selectedPod, selectedDeploymentInfo, drawerOpen, drawerType, setDrawerOpen, logViewerPod, selectPod, setView } = useUIStore();
   const { context, namespace } = useClusterStore();
   const { data: podDetails } = usePodDetails(selectedPod);
+  const { data: deploymentDetails } = useDeploymentDetails(selectedDeploymentInfo);
   const queryClient = useQueryClient();
 
   // Track previous namespace/context to detect changes
@@ -101,11 +103,20 @@ export function MainLayout() {
 
       {/* Pod details drawer */}
       <Drawer
-        isOpen={drawerOpen && !!selectedPod}
+        isOpen={drawerOpen && drawerType === 'pod'}
         onClose={() => setDrawerOpen(false)}
         title={selectedPod || ''}
       >
         {podDetails && <PodDetails details={podDetails} />}
+      </Drawer>
+
+      {/* Deployment details drawer */}
+      <Drawer
+        isOpen={drawerOpen && drawerType === 'deployment'}
+        onClose={() => setDrawerOpen(false)}
+        title={selectedDeploymentInfo || ''}
+      >
+        {deploymentDetails && <DeploymentDetails details={deploymentDetails} />}
       </Drawer>
 
       {/* Connection Error Dialog */}

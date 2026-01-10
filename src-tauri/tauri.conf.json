@@ -37,6 +37,9 @@
       "icons/icon.icns",
       "icons/icon.png"
     ],
+    "resources": {
+      "icons/icon_256x256.png": "icons/icon_256x256.png"
+    },
     "macOS": {
       "minimumSystemVersion": "10.15"
     }
