@@ -221,35 +221,38 @@ export function LogSearch() {
                 </thead>
                 <tbody>
                   {results.flatMap((result) =>
-                    result.entries.map((entry, idx) => (
-                      <tr
-                        key={`${result.pod_name}-${idx}`}
-                        className={clsx(
-                          'border-b border-border-subtle hover:bg-bg-tertiary/50 transition-colors cursor-pointer',
-                          entry.level === 'ERROR' && 'bg-red-500/5',
-                          entry.level === 'WARN' && 'bg-amber-500/5'
-                        )}
-                        onClick={() => setSelectedLog({ ...entry, pod_name: result.pod_name, container_name: result.container_name })}
-                      >
-                        <td className="px-4 py-2 font-mono text-sm text-text-muted w-24">
-                          {formatShortTimestamp(entry.timestamp)}
-                        </td>
-                        <td className="px-4 py-2" style={{ width: podColumnWidth }}>
-                          <span
-                            className="font-mono text-sm text-cyan-500 dark:text-cyan-400 truncate block"
-                            style={{ maxWidth: podColumnWidth - 32 }}
-                          >
-                            {result.pod_name}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2 w-20">
-                          <LogLevelBadge level={entry.level} />
-                        </td>
-                        <td className="px-4 py-2">
-                          <HighlightedText text={entry.message} keyword={keyword} />
-                        </td>
-                      </tr>
-                    ))
+                    result.entries.map((entry, idx) => {
+                      const isError = entry.level === 'ERROR';
+                      return (
+                        <tr
+                          key={`${result.pod_name}-${idx}`}
+                          className={clsx(
+                            'border-b border-border-subtle hover:bg-bg-tertiary/50 transition-colors cursor-pointer',
+                            isError && 'bg-red-500/5',
+                            entry.level === 'WARN' && 'bg-amber-500/5'
+                          )}
+                          onClick={() => setSelectedLog({ ...entry, pod_name: result.pod_name, container_name: result.container_name })}
+                        >
+                          <td className={clsx('px-4 py-2 font-mono text-sm text-text-muted w-24', isError && 'align-top')}>
+                            {formatShortTimestamp(entry.timestamp)}
+                          </td>
+                          <td className={clsx('px-4 py-2', isError && 'align-top')} style={{ width: podColumnWidth }}>
+                            <span
+                              className="font-mono text-sm text-cyan-500 dark:text-cyan-400 truncate block"
+                              style={{ maxWidth: podColumnWidth - 32 }}
+                            >
+                              {result.pod_name}
+                            </span>
+                          </td>
+                          <td className={clsx('px-4 py-2 w-20', isError && 'align-top')}>
+                            <LogLevelBadge level={entry.level} />
+                          </td>
+                          <td className="px-4 py-2">
+                            <HighlightedText text={entry.message} keyword={keyword} isError={isError} />
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -265,7 +268,8 @@ export function LogSearch() {
             {results.map((r) => (
               <span
                 key={r.pod_name}
-                className="inline-flex items-center gap-1 px-2 py-1 bg-bg-tertiary rounded"
+                className="inline-flex items-center gap-1 px-2 py-1 bg-bg-tertiary rounded cursor-default"
+                title={r.pod_name}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                 ...{r.pod_name.slice(-6)}
@@ -288,19 +292,19 @@ export function LogSearch() {
   );
 }
 
-function HighlightedText({ text, keyword }: { text: string; keyword: string }) {
+function HighlightedText({ text, keyword, isError }: { text: string; keyword: string; isError?: boolean }) {
   const match = highlightMatch(text, keyword);
+  const textClass = clsx(
+    'font-mono text-sm block',
+    isError ? 'line-clamp-2 text-red-500 dark:text-red-400' : 'truncate text-text-secondary'
+  );
 
   if (!match) {
-    return (
-      <span className="font-mono text-sm text-text-secondary truncate block">
-        {text}
-      </span>
-    );
+    return <span className={textClass}>{text}</span>;
   }
 
   return (
-    <span className="font-mono text-sm text-text-secondary truncate block">
+    <span className={textClass}>
       {match.before}
       <mark className="bg-amber-500/30 text-text-primary px-0.5 rounded">
         {match.match}

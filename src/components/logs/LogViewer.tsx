@@ -60,11 +60,16 @@ export function LogViewer({ podName }: LogViewerProps) {
     );
   }, [logs, filter]);
 
-  // Virtualization
+  // Virtualization - ERROR logs in JSON mode get 2 lines (52px), others get 1 line (36px)
   const virtualizer = useVirtualizer({
     count: filteredLogs.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => (viewMode === 'json' ? 36 : 24),
+    estimateSize: (index) => {
+      if (viewMode === 'json' && filteredLogs[index]?.level === 'ERROR') {
+        return 52; // 2 lines for ERROR
+      }
+      return viewMode === 'json' ? 36 : 24;
+    },
     overscan: 20,
   });
 
@@ -292,13 +297,16 @@ function LogRow({ entry, viewMode, style, onClick }: LogRowProps) {
     );
   }
 
+  const isError = entry.level === 'ERROR';
+
   return (
     <div
       style={style}
       onClick={onClick}
       className={clsx(
-        'flex items-center px-6 py-1.5 hover:bg-bg-tertiary/50 cursor-pointer',
-        entry.level === 'ERROR' && 'bg-red-500/5',
+        'flex px-6 py-1.5 hover:bg-bg-tertiary/50 cursor-pointer',
+        isError ? 'items-start' : 'items-center',
+        isError && 'bg-red-500/5',
         entry.level === 'WARN' && 'bg-amber-500/5'
       )}
     >
@@ -310,8 +318,9 @@ function LogRow({ entry, viewMode, style, onClick }: LogRowProps) {
       </span>
       <span
         className={clsx(
-          'flex-1 truncate',
-          entry.level === 'ERROR' && 'text-red-500 dark:text-red-400',
+          'flex-1 min-w-0',
+          isError ? 'line-clamp-2' : 'truncate',
+          isError && 'text-red-500 dark:text-red-400',
           entry.level === 'WARN' && 'text-amber-600 dark:text-amber-400',
           !entry.level && 'text-text-secondary'
         )}
