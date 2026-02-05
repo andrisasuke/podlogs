@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { clsx } from 'clsx';
-import { Layers } from 'lucide-react';
+import { Layers, Settings } from 'lucide-react';
 import { Input } from '../common/Input';
 import { Button } from '../common/Button';
 import { TableSkeleton } from '../common/Skeleton';
@@ -12,7 +12,7 @@ import type { DeploymentInfo } from '../../types/kubernetes';
 export function DeploymentList() {
   const { data: deployments = [], isLoading } = useDeployments();
   const { setDeployment } = useClusterStore();
-  const { setView, selectDeploymentInfo } = useUIStore();
+  const { setView, selectDeploymentInfo, openSettings } = useUIStore();
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredDeployments = deployments.filter((d) =>
@@ -33,13 +33,18 @@ export function DeploymentList() {
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-border">
         <h1 className="text-lg font-semibold text-text-primary">Deployments</h1>
-        <div className="w-64">
-          <Input
-            icon
-            placeholder="Search deployments..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+        <div className="flex items-center gap-2">
+          <div className="w-64">
+            <Input
+              icon
+              placeholder="Search deployments..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <Button variant="ghost" size="icon" onClick={openSettings} title="Settings">
+            <Settings className="w-5 h-5" />
+          </Button>
         </div>
       </div>
 

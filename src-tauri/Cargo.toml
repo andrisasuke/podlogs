@@ -1,6 +1,6 @@
 [package]
 name = "podlogs"
-version = "1.0.0"
+version = "1.0.1"
 description = "Kubernetes Pod Log Viewer"
 authors = ["PodLogs"]
 edition = "2021"

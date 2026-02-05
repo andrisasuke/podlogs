@@ -1,6 +1,3 @@
-export const REFETCH_INTERVAL = 5000; // 5 seconds
-export const LOG_REFETCH_INTERVAL = 5000;
-
 export const SIDEBAR_WIDTH = 260;
 export const SIDEBAR_COLLAPSED_WIDTH = 60;
 export const DRAWER_WIDTH = 480;

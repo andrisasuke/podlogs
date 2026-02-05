@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import * as k8s from '../lib/tauri';
 import { useClusterStore } from '../stores/clusterStore';
+import { useUIStore } from '../stores/uiStore';
 import type { TimeRange } from '../lib/tauri';
-import { LOG_REFETCH_INTERVAL } from '../lib/constants';
 
 export function usePodLogs(
   podName: string | null,
@@ -13,6 +13,7 @@ export function usePodLogs(
   }
 ) {
   const { context, namespace } = useClusterStore();
+  const refreshInterval = useUIStore((state) => state.refreshInterval);
 
   return useQuery({
     queryKey: ['pod-logs', context, namespace, podName, options.container, options.timeRange],
@@ -22,7 +23,7 @@ export function usePodLogs(
         sinceSeconds: k8s.TIME_RANGES[options.timeRange],
       }),
     enabled: options.enabled !== false && !!context && !!namespace && !!podName,
-    refetchInterval: LOG_REFETCH_INTERVAL,
+    refetchInterval: refreshInterval,
   });
 }
 

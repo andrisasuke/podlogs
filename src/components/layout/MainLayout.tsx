@@ -9,6 +9,7 @@ import { DeploymentList } from '../deployments/DeploymentList';
 import { StatusBar } from './StatusBar';
 import { Drawer } from '../common/Drawer';
 import { ConnectionError } from '../common/ErrorDialog';
+import { Settings } from '../settings/Settings';
 import { useUIStore } from '../../stores/uiStore';
 import { useClusterStore } from '../../stores/clusterStore';
 import { usePodDetails, useDeploymentDetails } from '../../hooks/useK8s';
@@ -117,6 +118,15 @@ export function MainLayout() {
         title={selectedDeploymentInfo || ''}
       >
         {deploymentDetails && <DeploymentDetails details={deploymentDetails} />}
+      </Drawer>
+
+      {/* Settings drawer */}
+      <Drawer
+        isOpen={drawerOpen && drawerType === 'settings'}
+        onClose={() => setDrawerOpen(false)}
+        title="Settings"
+      >
+        <Settings />
       </Drawer>
 
       {/* Connection Error Dialog */}

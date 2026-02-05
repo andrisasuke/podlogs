@@ -2,22 +2,27 @@ import { useState, useEffect, useRef } from 'react';
 import { useClusterStore } from '../../stores/clusterStore';
 import { usePods } from '../../hooks/useK8s';
 import { useUIStore } from '../../stores/uiStore';
-import { STATUS_BAR_HEIGHT, REFETCH_INTERVAL } from '../../lib/constants';
+import { STATUS_BAR_HEIGHT } from '../../lib/constants';
 
 export function StatusBar() {
   const { context, deployment } = useClusterStore();
-  const { currentView } = useUIStore();
+  const { currentView, refreshInterval } = useUIStore();
   const { data: pods = [], isFetching } = usePods(deployment ?? undefined);
-  const [countdown, setCountdown] = useState(Math.floor(REFETCH_INTERVAL / 1000));
+  const [countdown, setCountdown] = useState(Math.floor(refreshInterval / 1000));
   const wasFetchingRef = useRef(false);
 
-  // Reset countdown when fetch completes
+  // Reset countdown when fetch completes or refreshInterval changes
   useEffect(() => {
     if (wasFetchingRef.current && !isFetching) {
-      setCountdown(Math.floor(REFETCH_INTERVAL / 1000));
+      setCountdown(Math.floor(refreshInterval / 1000));
     }
     wasFetchingRef.current = isFetching;
-  }, [isFetching]);
+  }, [isFetching, refreshInterval]);
+
+  // Reset countdown when refreshInterval changes
+  useEffect(() => {
+    setCountdown(Math.floor(refreshInterval / 1000));
+  }, [refreshInterval]);
 
   // Countdown timer
   useEffect(() => {

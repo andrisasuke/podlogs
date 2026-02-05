@@ -3,7 +3,8 @@ import { persist } from 'zustand/middleware';
 
 export type Theme = 'light' | 'dark' | 'system';
 export type View = 'pods' | 'deployments' | 'logs' | 'search';
-export type DrawerType = 'pod' | 'deployment' | null;
+export type DrawerType = 'pod' | 'deployment' | 'settings' | null;
+export type RefreshInterval = 5000 | 10000 | 15000 | 20000 | 30000;
 
 interface UIState {
   theme: Theme;
@@ -14,6 +15,7 @@ interface UIState {
   drawerOpen: boolean;
   drawerType: DrawerType;
   logViewerPod: string | null;
+  refreshInterval: RefreshInterval;
 
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
@@ -24,6 +26,8 @@ interface UIState {
   setDrawerOpen: (open: boolean) => void;
   openLogViewer: (podName: string) => void;
   closeLogViewer: () => void;
+  setRefreshInterval: (interval: RefreshInterval) => void;
+  openSettings: () => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -37,6 +41,7 @@ export const useUIStore = create<UIState>()(
       drawerOpen: false,
       drawerType: null,
       logViewerPod: null,
+      refreshInterval: 5000,
 
       setTheme: (theme) => set({ theme }),
       toggleTheme: () => {
@@ -51,10 +56,12 @@ export const useUIStore = create<UIState>()(
       setDrawerOpen: (drawerOpen) => set({ drawerOpen, drawerType: drawerOpen ? get().drawerType : null }),
       openLogViewer: (podName) => set({ currentView: 'logs', logViewerPod: podName }),
       closeLogViewer: () => set({ currentView: 'pods', logViewerPod: null }),
+      setRefreshInterval: (refreshInterval) => set({ refreshInterval }),
+      openSettings: () => set({ drawerOpen: true, drawerType: 'settings' }),
     }),
     {
       name: 'podlogs-ui',
-      partialize: (state) => ({ theme: state.theme, sidebarCollapsed: state.sidebarCollapsed }),
+      partialize: (state) => ({ theme: state.theme, sidebarCollapsed: state.sidebarCollapsed, refreshInterval: state.refreshInterval }),
     }
   )
 );

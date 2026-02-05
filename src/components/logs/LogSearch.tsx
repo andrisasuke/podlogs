@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useCallback } from 'react';
 import { clsx } from 'clsx';
-import { Search, Download } from 'lucide-react';
+import { Search, Download, Settings } from 'lucide-react';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
 import { Dropdown } from '../common/Dropdown';
@@ -10,12 +10,14 @@ import { LogDetailModal } from './LogDetailModal';
 import { useDeployments } from '../../hooks/useK8s';
 import { useLogSearch } from '../../hooks/useLogs';
 import { useClusterStore } from '../../stores/clusterStore';
+import { useUIStore } from '../../stores/uiStore';
 import { formatShortTimestamp, highlightMatch } from '../../lib/formatters';
 import { TIME_RANGES, getTimeRangeLabel, type TimeRange } from '../../lib/tauri';
 import { LOG_LEVELS, type LogEntry } from '../../types/logs';
 
 export function LogSearch() {
   const { deployment: selectedDeployment, setDeployment } = useClusterStore();
+  const { openSettings } = useUIStore();
   const { data: deployments = [] } = useDeployments();
 
   const [keyword, setKeyword] = useState('');
@@ -110,7 +112,12 @@ export function LogSearch() {
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="px-6 py-4 border-b border-border">
-        <h1 className="text-lg font-semibold text-text-primary mb-4">Log Search</h1>
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-lg font-semibold text-text-primary">Log Search</h1>
+          <Button variant="ghost" size="icon" onClick={openSettings} title="Settings">
+            <Settings className="w-5 h-5" />
+          </Button>
+        </div>
 
         {/* Search Form */}
         <div className="grid grid-cols-4 gap-4">

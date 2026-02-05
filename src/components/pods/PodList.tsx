@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { clsx } from 'clsx';
-import { Search } from 'lucide-react';
+import { Search, Settings } from 'lucide-react';
 import { Input } from '../common/Input';
 import { Button } from '../common/Button';
 import { StatusBadge } from '../common/Badge';
@@ -12,7 +12,7 @@ import type { PodInfo } from '../../types/kubernetes';
 
 export function PodList() {
   const { deployment } = useClusterStore();
-  const { selectPod, openLogViewer } = useUIStore();
+  const { selectPod, openLogViewer, openSettings } = useUIStore();
   const { data: pods = [], isLoading } = usePods(deployment ?? undefined);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -30,13 +30,18 @@ export function PodList() {
             <span className="text-lg font-semibold text-accent">{deployment}</span>
           )}
         </div>
-        <div className="w-64">
-          <Input
-            icon
-            placeholder="Search pods..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+        <div className="flex items-center gap-2">
+          <div className="w-64">
+            <Input
+              icon
+              placeholder="Search pods..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <Button variant="ghost" size="icon" onClick={openSettings} title="Settings">
+            <Settings className="w-5 h-5" />
+          </Button>
         </div>
       </div>
 

@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as k8s from '../lib/tauri';
 import { useClusterStore } from '../stores/clusterStore';
 import { useErrorStore } from '../stores/errorStore';
-import { REFETCH_INTERVAL } from '../lib/constants';
+import { useUIStore } from '../stores/uiStore';
 
 // Get error setter for use in query callbacks
 const getErrorSetter = () => useErrorStore.getState().setError;
@@ -63,6 +63,7 @@ export function useNamespaces() {
 export function useDeployments() {
   const queryClient = useQueryClient();
   const { context, namespace } = useClusterStore();
+  const refreshInterval = useUIStore((state) => state.refreshInterval);
   const queryKey = ['deployments', context, namespace];
 
   return useQuery({
@@ -77,7 +78,7 @@ export function useDeployments() {
     },
     enabled: !!context && !!namespace,
     staleTime: 30000,
-    refetchInterval: REFETCH_INTERVAL,
+    refetchInterval: refreshInterval,
     retry: 0,
   });
 }
@@ -85,6 +86,7 @@ export function useDeployments() {
 export function usePods(deployment?: string) {
   const queryClient = useQueryClient();
   const { context, namespace } = useClusterStore();
+  const refreshInterval = useUIStore((state) => state.refreshInterval);
   const queryKey = ['pods', context, namespace, deployment];
 
   return useQuery({
@@ -98,7 +100,7 @@ export function usePods(deployment?: string) {
       }
     },
     enabled: !!context && !!namespace,
-    refetchInterval: REFETCH_INTERVAL,
+    refetchInterval: refreshInterval,
     retry: 0,
   });
 }

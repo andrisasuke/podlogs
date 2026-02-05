@@ -1,7 +1,7 @@
 import { useRef, useEffect, useEffectEvent, useState, useMemo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { clsx } from 'clsx';
-import { ArrowLeft, Download } from 'lucide-react';
+import { ArrowLeft, Download, Settings } from 'lucide-react';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
 import { Dropdown } from '../common/Dropdown';
@@ -20,7 +20,7 @@ interface LogViewerProps {
 }
 
 export function LogViewer({ podName }: LogViewerProps) {
-  const { closeLogViewer } = useUIStore();
+  const { closeLogViewer, openSettings } = useUIStore();
   const { data: podDetails } = usePodDetails(podName);
 
   const [container, setContainer] = useState<string>('');
@@ -125,15 +125,20 @@ export function LogViewer({ podName }: LogViewerProps) {
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="px-6 py-4 border-b border-border">
-        <div className="flex items-center gap-4 mb-4">
-          <Button variant="ghost" size="sm" onClick={closeLogViewer}>
-            <ArrowLeft className="w-4 h-4 mr-1" />
-            Back
-          </Button>
-          <div>
-            <h1 className="text-lg font-semibold text-text-primary">Logs</h1>
-            <p className="text-sm text-text-muted font-mono">{podName}</p>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={closeLogViewer}>
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Back
+            </Button>
+            <div>
+              <h1 className="text-lg font-semibold text-text-primary">Logs</h1>
+              <p className="text-sm text-text-muted font-mono">{podName}</p>
+            </div>
           </div>
+          <Button variant="ghost" size="icon" onClick={openSettings} title="Settings">
+            <Settings className="w-5 h-5" />
+          </Button>
         </div>
 
         {/* Controls */}

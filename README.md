@@ -33,6 +33,8 @@ PodLogs provides a fast, native desktop experience for viewing and searching Kub
 - **Searchable Dropdowns** - Search through namespaces and deployments with keyboard
 - **Resizable Columns** - Drag to resize pod column in log search results
 - **Sticky Table Headers** - Headers stay visible when scrolling through results
+- **Settings Panel** - Configure theme and refresh interval from any view
+- **Configurable Refresh Interval** - Adjust auto-refresh from 5 to 30 seconds
 - **Dark/Light Theme** - Solarized Light and Slate Dark themes
 - **Virtualized Lists** - Smooth scrolling with thousands of log entries
 - **Intuitive Navigation** - Deployments → Pods → Logs with proper back navigation
