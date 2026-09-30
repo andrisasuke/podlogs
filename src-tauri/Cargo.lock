@@ -2894,11 +2894,12 @@ dependencies = [
 
 [[package]]
 name = "podlogs"
-version = "1.0.0"
+version = "1.0.2"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
  "futures",
+ "http",
  "k8s-openapi",
  "kube",
  "serde",
@@ -2908,6 +2909,7 @@ dependencies = [
  "tauri-plugin-shell",
  "thiserror 2.0.17",
  "tokio",
+ "tower",
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
 [package]
 name = "podlogs"
-version = "1.0.1"
+version = "1.0.2"
 description = "Kubernetes Pod Log Viewer"
 authors = ["PodLogs"]
 edition = "2021"
@@ -24,6 +24,10 @@ futures = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 dirs = "5"
+
+[dev-dependencies]
+http = "1"
+tower = { version = "0.5", features = ["util"] }
 
 [profile.release]
 panic = "abort"
