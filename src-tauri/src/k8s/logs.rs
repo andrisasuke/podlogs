@@ -1,11 +1,14 @@
+use futures::{stream, StreamExt};
 use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::Pod;
 use kube::api::{ListParams, LogParams};
-use kube::Api;
+use kube::{Api, Client};
 
 use crate::error::K8sError;
 use crate::k8s::client::get_client_for_context;
-use crate::models::{LogEntry, LogSearchResult};
+use crate::models::{LogEntry, LogSearchFailure, LogSearchResponse, LogSearchResult};
+
+const SEARCH_CONCURRENCY: usize = 4;
 
 #[tauri::command]
 pub async fn get_pod_logs(
@@ -64,12 +67,31 @@ pub async fn search_deployment_logs(
     keyword: Option<String>,
     log_level: Option<String>,
     since_seconds: Option<i64>,
-) -> Result<Vec<LogSearchResult>, K8sError> {
+) -> Result<LogSearchResponse, K8sError> {
     let client = get_client_for_context(&context).await?;
 
+    search_deployment_logs_with_client(
+        client,
+        &namespace,
+        &deployment,
+        keyword.as_deref(),
+        log_level.as_deref(),
+        since_seconds,
+    )
+    .await
+}
+
+async fn search_deployment_logs_with_client(
+    client: Client,
+    namespace: &str,
+    deployment: &str,
+    keyword: Option<&str>,
+    log_level: Option<&str>,
+    since_seconds: Option<i64>,
+) -> Result<LogSearchResponse, K8sError> {
     // Get the deployment to find its label selector
-    let deployments: Api<Deployment> = Api::namespaced(client.clone(), &namespace);
-    let deploy = deployments.get(&deployment).await?;
+    let deployments: Api<Deployment> = Api::namespaced(client.clone(), namespace);
+    let deploy = deployments.get(deployment).await?;
 
     let selector = deploy
         .spec
@@ -85,34 +107,43 @@ pub async fn search_deployment_logs(
         .unwrap_or_default();
 
     // Get all pods for this deployment
-    let pods: Api<Pod> = Api::namespaced(client.clone(), &namespace);
+    let pods: Api<Pod> = Api::namespaced(client, namespace);
     let pod_list = pods.list(&ListParams::default().labels(&selector)).await?;
 
-    let mut results: Vec<LogSearchResult> = Vec::new();
+    let targets: Vec<_> = pod_list
+        .items
+        .into_iter()
+        .flat_map(|pod| {
+            let pod_name = pod.metadata.name.unwrap_or_default();
+            pod.spec
+                .map(|spec| spec.containers)
+                .unwrap_or_default()
+                .into_iter()
+                .map(move |container| (pod_name.clone(), container.name))
+        })
+        .collect();
 
-    for pod in pod_list.items {
-        let pod_name = pod.metadata.name.clone().unwrap_or_default();
+    let mut response = LogSearchResponse {
+        total_containers: targets.len(),
+        ..Default::default()
+    };
+    // Normalize once, then retain only matches as each container completes.
+    let keyword = keyword.map(str::to_lowercase);
+    let log_level = log_level
+        .filter(|level| !level.is_empty() && !level.eq_ignore_ascii_case("any"))
+        .map(str::to_uppercase);
 
-        // Get containers
-        let containers: Vec<String> = pod
-            .spec
-            .as_ref()
-            .map(|s| s.containers.iter().map(|c| c.name.clone()).collect())
-            .unwrap_or_default();
-
-        for container_name in containers {
-            let mut params = LogParams {
+    let searches = stream::iter(targets).map(|(pod_name, container_name)| {
+        let pods = pods.clone();
+        let keyword = keyword.as_deref();
+        let log_level = log_level.as_deref();
+        async move {
+            let params = LogParams {
                 timestamps: true,
                 container: Some(container_name.clone()),
+                since_seconds,
                 ..Default::default()
             };
-
-            if let Some(since) = since_seconds {
-                params.since_seconds = Some(since);
-            }
-
-            // Limit to reasonable number of lines for search
-            params.tail_lines = Some(1000);
 
             match pods.logs(&pod_name, &params).await {
                 Ok(logs) => {
@@ -121,20 +152,18 @@ pub async fn search_deployment_logs(
                         .map(|line| parse_log_line(line, &pod_name, &container_name))
                         .filter(|entry| {
                             let keyword_match = keyword
-                                .as_ref()
                                 .map(|kw| {
-                                    entry.message.to_lowercase().contains(&kw.to_lowercase())
-                                        || entry.raw.to_lowercase().contains(&kw.to_lowercase())
+                                    entry.message.to_lowercase().contains(kw)
+                                        || entry.raw.to_lowercase().contains(kw)
                                 })
                                 .unwrap_or(true);
 
                             let level_match = log_level
-                                .as_ref()
                                 .map(|lv| {
                                     entry
                                         .level
                                         .as_ref()
-                                        .map(|l| l.to_uppercase() == lv.to_uppercase())
+                                        .map(|l| l.to_uppercase() == lv)
                                         .unwrap_or(false)
                                 })
                                 .unwrap_or(true);
@@ -143,21 +172,43 @@ pub async fn search_deployment_logs(
                         })
                         .collect();
 
-                    if !entries.is_empty() {
-                        results.push(LogSearchResult {
-                            pod_name: pod_name.clone(),
-                            container_name: container_name.clone(),
-                            total_matches: entries.len() as i32,
-                            entries,
-                        });
-                    }
+                    Ok(LogSearchResult {
+                        pod_name,
+                        container_name,
+                        total_matches: entries.len() as i32,
+                        entries,
+                    })
                 }
-                Err(_) => continue, // Skip pods we can't get logs from
+                Err(error) => Err(LogSearchFailure {
+                    pod_name,
+                    container_name,
+                    message: error.to_string(),
+                }),
             }
+        }
+    });
+    let mut searches = searches.buffer_unordered(SEARCH_CONCURRENCY);
+
+    while let Some(result) = searches.next().await {
+        match result {
+            Ok(result) => {
+                response.successful_containers += 1;
+                if !result.entries.is_empty() {
+                    response.results.push(result);
+                }
+            }
+            Err(failure) => response.failures.push(failure),
         }
     }
 
-    Ok(results)
+    response
+        .results
+        .sort_by(|a, b| (&a.pod_name, &a.container_name).cmp(&(&b.pod_name, &b.container_name)));
+    response
+        .failures
+        .sort_by(|a, b| (&a.pod_name, &a.container_name).cmp(&(&b.pod_name, &b.container_name)));
+
+    Ok(response)
 }
 
 /// Parse a single log line, detecting JSON vs plain text
@@ -305,3 +356,6 @@ fn detect_log_level(content: &str) -> Option<String> {
 
     None
 }
+#[cfg(test)]
+#[path = "logs_tests.rs"]
+mod tests;

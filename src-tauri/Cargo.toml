@@ -25,6 +25,10 @@ chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 dirs = "5"
 
+[dev-dependencies]
+http = "1"
+tower = { version = "0.5", features = ["util"] }
+
 [profile.release]
 panic = "abort"
 codegen-units = 1
