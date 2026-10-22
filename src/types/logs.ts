@@ -15,6 +15,19 @@ export interface LogSearchResult {
   entries: LogEntry[];
 }
 
+export interface LogSearchFailure {
+  pod_name: string;
+  container_name: string;
+  message: string;
+}
+
+export interface LogSearchResponse {
+  results: LogSearchResult[];
+  failures: LogSearchFailure[];
+  total_containers: number;
+  successful_containers: number;
+}
+
 export type LogLevel = 'ERROR' | 'WARN' | 'INFO' | 'DEBUG';
 
 export const LOG_LEVELS: LogLevel[] = ['ERROR', 'WARN', 'INFO', 'DEBUG'];

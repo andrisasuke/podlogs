@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { clsx } from 'clsx';
 import { Search, Download, Settings } from 'lucide-react';
 import { Button } from '../common/Button';
@@ -13,18 +13,19 @@ import { useClusterStore } from '../../stores/clusterStore';
 import { useUIStore } from '../../stores/uiStore';
 import { formatShortTimestamp, highlightMatch } from '../../lib/formatters';
 import { TIME_RANGES, getTimeRangeLabel, type TimeRange } from '../../lib/tauri';
-import { LOG_LEVELS, type LogEntry } from '../../types/logs';
+import { LOG_LEVELS, type LogEntry, type LogSearchFailure } from '../../types/logs';
 
 export function LogSearch() {
-  const { deployment: selectedDeployment, setDeployment } = useClusterStore();
+  const { context, namespace, deployment: selectedDeployment, setDeployment } = useClusterStore();
   const { openSettings } = useUIStore();
   const { data: deployments = [] } = useDeployments();
 
   const [keyword, setKeyword] = useState('');
   const [logLevel, setLogLevel] = useState<string>('');
   const [timeRange, setTimeRange] = useState<TimeRange>('1h');
-  const [searchTriggered, setSearchTriggered] = useState(false);
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
+
+  useEffect(() => setSelectedLog(null), [context, namespace, selectedDeployment]);
 
   // Resizable Pod column
   const [podColumnWidth, setPodColumnWidth] = useState(208); // w-52 = 13rem = 208px
@@ -58,15 +59,12 @@ export function LogSearch() {
     document.addEventListener('mouseup', handleMouseUp);
   }, [podColumnWidth]);
 
-  const {
-    data: results = [],
-    isLoading,
-    isFetching,
-  } = useLogSearch(
-    selectedDeployment,
-    { keyword, logLevel, timeRange },
-    searchTriggered && !!selectedDeployment
-  );
+  const { data, error, isPending, snapshot, search, retry } = useLogSearch();
+  const results = data?.results ?? [];
+  const allFailed = !!data && data.total_containers > 0 && data.successful_containers === 0;
+  const partial = !!data && data.failures.length > 0 && !allFailed;
+  const filtersChanged = !!snapshot && (keyword !== snapshot.keyword ||
+    logLevel !== snapshot.logLevel || timeRange !== snapshot.timeRange);
 
   const deploymentOptions = useMemo(
     () => deployments.map((d) => ({ value: d.name, label: d.name })),
@@ -85,7 +83,8 @@ export function LogSearch() {
 
   const handleSearch = () => {
     if (selectedDeployment) {
-      setSearchTriggered(true);
+      setSelectedLog(null);
+      search({ context, namespace, deployment: selectedDeployment, keyword, logLevel, timeRange });
     }
   };
 
@@ -93,6 +92,7 @@ export function LogSearch() {
   const uniquePods = new Set(results.map((r) => r.pod_name)).size;
 
   const handleExport = () => {
+    if (!snapshot) return;
     const lines = results.flatMap((r) =>
       r.entries.map(
         (e) => `${e.timestamp}\t${r.pod_name}\t${e.level || '-'}\t${e.message}`
@@ -103,7 +103,7 @@ export function LogSearch() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${selectedDeployment}-log-search.csv`;
+    a.download = `${snapshot.deployment}-log-search.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -120,79 +120,112 @@ export function LogSearch() {
         </div>
 
         {/* Search Form */}
-        <div className="grid grid-cols-4 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-text-muted uppercase tracking-wider mb-2">
-              Deployment
-            </label>
-            <Dropdown
-              options={deploymentOptions}
-              value={selectedDeployment || ''}
-              onChange={setDeployment}
-              placeholder="Select deployment..."
-              searchable
-              searchPlaceholder="Search deployments..."
-            />
+        <form onSubmit={(event) => { event.preventDefault(); handleSearch(); }}>
+          <div className="grid grid-cols-4 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-text-muted uppercase tracking-wider mb-2">
+                Deployment
+              </label>
+              <Dropdown
+                options={deploymentOptions}
+                value={selectedDeployment || ''}
+                onChange={setDeployment}
+                placeholder="Select deployment..."
+                searchable
+                searchPlaceholder="Search deployments..."
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-muted uppercase tracking-wider mb-2">
+                Keyword
+              </label>
+              <Input
+                aria-label="Keyword"
+                placeholder="Search keyword..."
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-muted uppercase tracking-wider mb-2">
+                Log Level
+              </label>
+              <Dropdown
+                options={logLevelOptions}
+                value={logLevel}
+                onChange={setLogLevel}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-muted uppercase tracking-wider mb-2">
+                Time Range
+              </label>
+              <Dropdown
+                options={timeRangeOptions}
+                value={timeRange}
+                onChange={(v) => setTimeRange(v as TimeRange)}
+              />
+            </div>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-text-muted uppercase tracking-wider mb-2">
-              Keyword
-            </label>
-            <Input
-              placeholder="Search keyword..."
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-text-muted uppercase tracking-wider mb-2">
-              Log Level
-            </label>
-            <Dropdown
-              options={logLevelOptions}
-              value={logLevel}
-              onChange={setLogLevel}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-text-muted uppercase tracking-wider mb-2">
-              Time Range
-            </label>
-            <Dropdown
-              options={timeRangeOptions}
-              value={timeRange}
-              onChange={(v) => setTimeRange(v as TimeRange)}
-            />
-          </div>
-        </div>
 
-        <div className="flex justify-end mt-4">
-          <Button
-            variant="primary"
-            onClick={handleSearch}
-            disabled={!selectedDeployment || isFetching}
-          >
-            <Search className="w-4 h-4 mr-2" />
-            Search
-          </Button>
-        </div>
+          <div className="flex items-center justify-between mt-4 gap-4">
+            <span className="text-sm text-amber-600 dark:text-amber-400" role="status">
+              {filtersChanged && 'Filters changed. Click Search to apply.'}
+            </span>
+            <Button
+              variant="primary"
+              type="submit"
+              disabled={!context || !namespace || !selectedDeployment || isPending}
+            >
+              <Search className="w-4 h-4 mr-2" />
+              Search
+            </Button>
+          </div>
+        </form>
       </div>
 
       {/* Results */}
-      <div className="flex-1 overflow-hidden flex flex-col">
-        {!searchTriggered ? (
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+        {snapshot && (
+          <p className="px-6 pt-4 text-xs text-text-muted">
+            Applied filters: {snapshot.keyword ? `Keyword "${snapshot.keyword}"` : 'All keywords'}
+            {' · '}{snapshot.logLevel || 'Any level'}{' · '}{getTimeRangeLabel(snapshot.timeRange)}
+          </p>
+        )}
+        {partial && (
+          <div role="alert" className="shrink-0 mx-6 mt-4 p-3 border border-amber-500/40 rounded-lg text-sm text-amber-600 dark:text-amber-400">
+            <p>Search incomplete: {data.successful_containers} of {data.total_containers} containers searched successfully.</p>
+            <FailureDetails failures={data.failures} />
+            <Button size="sm" className="mt-2" onClick={retry}>Retry</Button>
+          </div>
+        )}
+        {!snapshot ? (
           <div className="flex flex-col items-center justify-center h-full text-text-muted">
             <Search className="w-16 h-16 mb-4 opacity-30" />
             <p className="text-lg">Search across all pods in a deployment</p>
             <p className="text-sm mt-2">Select a deployment and click Search</p>
           </div>
-        ) : isLoading ? (
+        ) : isPending ? (
           <LogSkeleton rows={15} />
+        ) : error || allFailed ? (
+          <div role="alert" className="flex flex-col items-center justify-center px-6 py-8 text-text-primary">
+            <p className="text-lg text-red-500">Search failed</p>
+            <p className="text-sm mt-2">{error || 'Could not read logs from any container.'}</p>
+            {data && <FailureDetails failures={data.failures} />}
+            <Button className="mt-4" onClick={retry}>Retry</Button>
+          </div>
+        ) : data?.total_containers === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 text-text-muted">
+            <p className="text-lg">No pods or containers found</p>
+            <p className="text-sm mt-1">This deployment has no regular containers to search.</p>
+          </div>
         ) : results.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-text-muted">
             <Search className="w-12 h-12 mb-4 opacity-50" />
-            <p className="text-lg">No results found</p>
-            <p className="text-sm mt-1">Try adjusting your search filters</p>
+            <p className="text-lg">{partial ? 'No matches in successfully searched containers' : 'No results found'}</p>
+            <p className="text-sm mt-1">
+              {partial ? 'The search is incomplete because some containers could not be read.' : 'Try adjusting your search filters'}
+            </p>
           </div>
         ) : (
           <>
@@ -232,7 +265,7 @@ export function LogSearch() {
                       const isError = entry.level === 'ERROR';
                       return (
                         <tr
-                          key={`${result.pod_name}-${idx}`}
+                          key={`${result.pod_name}/${result.container_name}/${idx}`}
                           className={clsx(
                             'border-b border-border-subtle hover:bg-bg-tertiary/50 transition-colors cursor-pointer',
                             isError && 'bg-red-500/5',
@@ -247,15 +280,19 @@ export function LogSearch() {
                             <span
                               className="font-mono text-sm text-cyan-500 dark:text-cyan-400 truncate block"
                               style={{ maxWidth: podColumnWidth - 32 }}
+                              title={`${result.pod_name} / ${result.container_name}`}
                             >
                               {result.pod_name}
+                            </span>
+                            <span className="block text-xs text-text-muted truncate" title={result.container_name}>
+                              {result.container_name}
                             </span>
                           </td>
                           <td className={clsx('px-4 py-2 w-20', isError && 'align-top')}>
                             <LogLevelBadge level={entry.level} />
                           </td>
                           <td className="px-4 py-2">
-                            <HighlightedText text={entry.message} keyword={keyword} isError={isError} />
+                            <HighlightedText text={entry.message} keyword={snapshot.keyword} isError={isError} />
                           </td>
                         </tr>
                       );
@@ -272,14 +309,14 @@ export function LogSearch() {
       {results.length > 0 && (
         <div className="flex items-center justify-between px-6 py-2 border-t border-border">
           <div className="flex items-center gap-2 text-xs text-text-muted">
-            {results.map((r) => (
+            {[...new Set(results.map((r) => r.pod_name))].map((podName) => (
               <span
-                key={r.pod_name}
+                key={podName}
                 className="inline-flex items-center gap-1 px-2 py-1 bg-bg-tertiary rounded cursor-default"
-                title={r.pod_name}
+                title={podName}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                ...{r.pod_name.slice(-6)}
+                ...{podName.slice(-6)}
               </span>
             ))}
           </div>
@@ -296,6 +333,21 @@ export function LogSearch() {
         onClose={() => setSelectedLog(null)}
       />
     </div>
+  );
+}
+
+function FailureDetails({ failures }: { failures: LogSearchFailure[] }) {
+  return (
+    <details className="mt-2 max-w-full text-sm">
+      <summary className="cursor-pointer">Failed containers ({failures.length})</summary>
+      <ul className="mt-2 space-y-1 max-h-40 overflow-auto">
+        {failures.map((failure) => (
+          <li key={`${failure.pod_name}/${failure.container_name}`} className="break-words">
+            <span className="font-mono">{failure.pod_name} / {failure.container_name}</span>: {failure.message}
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

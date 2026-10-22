@@ -7,7 +7,7 @@ import type {
   PodInfo,
   PodDetails,
 } from '../types/kubernetes';
-import type { LogEntry, LogSearchResult } from '../types/logs';
+import type { LogEntry, LogSearchResponse } from '../types/logs';
 
 // Timeout for K8s API calls (30 seconds)
 const API_TIMEOUT = 30000;
@@ -17,16 +17,18 @@ async function invokeWithTimeout<T>(
   cmd: string,
   args?: Record<string, unknown>
 ): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => {
+    timer = setTimeout(() => {
       reject(new Error(`Connection timed out after ${API_TIMEOUT / 1000} seconds`));
     }, API_TIMEOUT);
   });
 
-  return Promise.race([
-    invoke<T>(cmd, args),
-    timeoutPromise,
-  ]);
+  try {
+    return await Promise.race([invoke<T>(cmd, args), timeoutPromise]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ============================================
@@ -126,8 +128,8 @@ export async function searchDeploymentLogs(
     logLevel?: string;
     sinceSeconds?: number;
   }
-): Promise<LogSearchResult[]> {
-  return invokeWithTimeout<LogSearchResult[]>('search_deployment_logs', {
+): Promise<LogSearchResponse> {
+  return invokeWithTimeout<LogSearchResponse>('search_deployment_logs', {
     context,
     namespace,
     deployment,
