@@ -2,7 +2,6 @@ use crate::error::K8sError;
 use crate::k8s::client::load_kubeconfig;
 use crate::models::ClusterInfo;
 
-#[tauri::command]
 pub async fn get_clusters() -> Result<Vec<ClusterInfo>, K8sError> {
     let kubeconfig = load_kubeconfig()?;
     let current_context = kubeconfig.current_context.clone();

@@ -12,7 +12,6 @@ use crate::models::{
     ResourceRequirements,
 };
 
-#[tauri::command]
 pub async fn get_pods(
     context: String,
     namespace: String,
@@ -90,7 +89,6 @@ pub async fn get_pods(
     Ok(result)
 }
 
-#[tauri::command]
 pub async fn get_pod_details(
     context: String,
     namespace: String,

@@ -8,7 +8,6 @@ use crate::error::K8sError;
 use crate::k8s::client::get_client_for_context;
 use crate::models::{DeploymentInfo, DeploymentDetails, DeploymentCondition};
 
-#[tauri::command]
 pub async fn get_deployments(
     context: String,
     namespace: String,
@@ -45,7 +44,6 @@ pub async fn get_deployments(
     Ok(result)
 }
 
-#[tauri::command]
 pub async fn get_deployment_details(
     context: String,
     namespace: String,

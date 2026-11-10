@@ -10,7 +10,6 @@ use crate::models::{LogEntry, LogSearchFailure, LogSearchResponse, LogSearchResu
 
 const SEARCH_CONCURRENCY: usize = 4;
 
-#[tauri::command]
 pub async fn get_pod_logs(
     context: String,
     namespace: String,
@@ -59,7 +58,6 @@ pub async fn get_pod_logs(
     Ok(entries)
 }
 
-#[tauri::command]
 pub async fn search_deployment_logs(
     context: String,
     namespace: String,

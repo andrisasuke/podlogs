@@ -6,7 +6,6 @@ use crate::error::K8sError;
 use crate::k8s::client::get_client_for_context;
 use crate::models::NamespaceInfo;
 
-#[tauri::command]
 pub async fn get_namespaces(context: String) -> Result<Vec<NamespaceInfo>, K8sError> {
     let client = get_client_for_context(&context).await?;
     let namespaces: Api<Namespace> = Api::all(client);
