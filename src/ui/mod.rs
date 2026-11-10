@@ -3,6 +3,7 @@ pub mod button;
 pub mod collapsible;
 pub mod dropdown;
 pub mod drawer;
+pub mod gallery; // TEMPORARY
 pub mod icons;
 pub mod input;
 pub mod modal;

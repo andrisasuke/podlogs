@@ -5,7 +5,6 @@ mod app;
 mod error;
 mod format;
 mod k8s;
-mod label_preview; // TEMPORARY: remove in Task 7
 mod models;
 mod persist;
 mod status;
@@ -23,9 +22,6 @@ struct Root;
 
 impl Render for Root {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if label_preview::enabled() {
-            return label_preview::render(cx);
-        }
         div().size_full().bg(pal(cx).bg1)
     }
 }
@@ -35,7 +31,7 @@ fn main() {
         gpui_kit::init(cx);
         load_fonts(cx);
         ui::init(cx);
-        set_palette(palette(!label_preview::enabled() || label_preview::dark()), cx);
+        set_palette(palette(!ui::gallery::enabled() || ui::gallery::start_dark()), cx);
 
         cx.on_action(|_: &Quit, cx| cx.quit());
         let quit_key = if cfg!(target_os = "macos") { "cmd-q" } else { "ctrl-q" };
@@ -43,17 +39,18 @@ fn main() {
         cx.on_window_closed(|cx, _| cx.quit()).detach();
 
         let bounds = Bounds::centered(None, size(px(1400.), px(900.)), cx);
-        gpui_kit::open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Maximized(bounds)),
-                window_min_size: Some(size(px(1000.), px(700.))),
-                titlebar: Some(TitlebarOptions { title: Some("PodLogs".into()), ..Default::default() }),
-                window_background: WindowBackgroundAppearance::Opaque,
-                ..Default::default()
-            },
-            cx,
-            |_, cx| cx.new(|_| Root),
-        )
+        let opts = WindowOptions {
+            window_bounds: Some(WindowBounds::Maximized(bounds)),
+            window_min_size: Some(size(px(1000.), px(700.))),
+            titlebar: Some(TitlebarOptions { title: Some("PodLogs".into()), ..Default::default() }),
+            window_background: WindowBackgroundAppearance::Opaque,
+            ..Default::default()
+        };
+        if ui::gallery::enabled() {
+            gpui_kit::open_window(opts, cx, |window, cx| cx.new(|cx| ui::gallery::Gallery::new(window, cx))).map(drop)
+        } else {
+            gpui_kit::open_window(opts, cx, |_, cx| cx.new(|_| Root)).map(drop)
+        }
         .expect("open window");
         cx.activate(true);
     });
