@@ -5,6 +5,7 @@ mod app;
 mod error;
 mod format;
 mod k8s;
+mod label_preview; // TEMPORARY: remove in Task 7
 mod models;
 mod persist;
 mod status;
@@ -22,6 +23,9 @@ struct Root;
 
 impl Render for Root {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if label_preview::enabled() {
+            return label_preview::render(cx);
+        }
         div().size_full().bg(pal(cx).bg1)
     }
 }
@@ -30,7 +34,7 @@ fn main() {
     gpui_kit::application().with_assets(Assets).run(|cx: &mut App| {
         gpui_kit::init(cx);
         load_fonts(cx);
-        set_palette(palette(true), cx);
+        set_palette(palette(!label_preview::enabled() || label_preview::dark()), cx);
 
         cx.on_action(|_: &Quit, cx| cx.quit());
         let quit_key = if cfg!(target_os = "macos") { "cmd-q" } else { "ctrl-q" };
