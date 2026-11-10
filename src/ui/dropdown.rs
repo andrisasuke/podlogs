@@ -150,6 +150,8 @@ impl Render for DropdownState {
             .on_action(cx.listener(|this, _: &CloseOverlay, window, cx| {
                 if this.open {
                     this.close(window, cx);
+                } else {
+                    cx.propagate(); // closed: let an enclosing drawer/modal take Escape
                 }
             }))
             .child(trigger)

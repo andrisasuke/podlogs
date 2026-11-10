@@ -33,6 +33,7 @@ pub struct Button {
     label: Option<SharedString>,
     disabled: bool,
     tooltip: Option<&'static str>,
+    full: bool,
     on_click: Option<ClickFn>,
 }
 
@@ -47,6 +48,7 @@ impl Button {
             label: None,
             disabled: false,
             tooltip: None,
+            full: false,
             on_click: None,
         }
     }
@@ -73,6 +75,11 @@ impl Button {
     }
     pub fn tooltip(mut self, t: &'static str) -> Self {
         self.tooltip = Some(t);
+        self
+    }
+    /// Tailwind `w-full`.
+    pub fn full_width(mut self) -> Self {
+        self.full = true;
         self
     }
     pub fn on_click(mut self, f: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
@@ -109,6 +116,7 @@ impl RenderOnce for Button {
                 }
                 Variant::Ghost => b.text_color(p.text2).when(!disabled, |b| b.hover(|s| s.bg(p.bg3))),
             })
+            .when(self.full, |b| b.w_full())
             .when_some(self.icon, |b, i| {
                 b.child(Icon::new(i).size_4().when(self.label.is_some(), |i| i.mr(px(self.icon_gap))))
             })

@@ -10,32 +10,32 @@ mod persist;
 mod status;
 mod ui;
 
+use std::sync::Arc;
+
 use gpui_kit::*;
 
+use api::KubeApi;
+use app::{menus, root::PodLogsApp, store::Store};
 use ui::icons::AppAssets;
-use ui::theme::{load_fonts, pal, palette, set_palette};
-
-actions!(podlogs, [Quit]);
-
-/// Empty root until the app shell lands (Task 9).
-struct Root;
-
-impl Render for Root {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div().size_full().bg(pal(cx).bg1)
-    }
-}
+use ui::theme::{load_fonts, palette, set_palette};
 
 fn main() {
-    gpui_kit::application().with_assets(AppAssets).run(|cx: &mut App| {
+    // One multi-thread tokio runtime for every kube-rs call; gpui has its own executor.
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .expect("tokio runtime");
+    let api = Arc::new(KubeApi::new(runtime.handle().clone()));
+    let persist_path = persist::default_path();
+    let persisted = persist_path.as_deref().map(persist::load).unwrap_or_default();
+
+    gpui_kit::application().with_assets(AppAssets).run(move |cx: &mut App| {
         gpui_kit::init(cx);
         load_fonts(cx);
         ui::init(cx);
+        menus::install(cx);
         set_palette(palette(!ui::gallery::enabled() || ui::gallery::start_dark()), cx);
-
-        cx.on_action(|_: &Quit, cx| cx.quit());
-        let quit_key = if cfg!(target_os = "macos") { "cmd-q" } else { "ctrl-q" };
-        cx.bind_keys([KeyBinding::new(quit_key, Quit, None)]);
         cx.on_window_closed(|cx, _| cx.quit()).detach();
 
         let bounds = Bounds::centered(None, size(px(1400.), px(900.)), cx);
@@ -49,9 +49,14 @@ fn main() {
         if ui::gallery::enabled() {
             gpui_kit::open_window(opts, cx, |window, cx| cx.new(|cx| ui::gallery::Gallery::new(window, cx))).map(drop)
         } else {
-            gpui_kit::open_window(opts, cx, |_, cx| cx.new(|_| Root)).map(drop)
+            gpui_kit::open_window(opts, cx, move |window, cx| {
+                let store = cx.new(|cx| Store::new(api, persisted, persist_path, cx));
+                cx.new(|cx| PodLogsApp::new(store, window, cx))
+            })
+            .map(drop)
         }
         .expect("open window");
         cx.activate(true);
     });
+    drop(runtime);
 }

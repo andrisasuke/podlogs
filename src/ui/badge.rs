@@ -2,7 +2,7 @@
 use gpui_kit::*;
 
 use super::theme::{Tw, hex, hexa, pal, tw};
-use crate::status::{BadgeVariant, pod_status_variant};
+use crate::status::{BadgeVariant, Health, pod_status_variant};
 
 pub fn dot(color: Hsla, size_px: f32) -> Div {
     div().size(px(size_px)).flex_none().rounded_full().bg(color)
@@ -17,6 +17,15 @@ fn variant_colors(v: BadgeVariant) -> (u32, u32, u32) {
         BadgeVariant::Terminating => (tw::PURPLE_500, tw::PURPLE_600, tw::PURPLE_400),
         BadgeVariant::Default => (tw::GRAY_500, tw::GRAY_500, tw::GRAY_400),
     }
+}
+
+/// Deployment health dot/text color (`emerald/amber/red-500`, same in both themes).
+pub fn health_color(h: Health) -> Hsla {
+    hex(match h {
+        Health::Healthy => tw::EMERALD_500,
+        Health::Degraded => tw::AMBER_500,
+        Health::Unhealthy => tw::RED_500,
+    })
 }
 
 pub fn status_badge(status: &str, ready: Option<&str>, cx: &App) -> Div {
