@@ -11,9 +11,9 @@ mod persist;
 mod status;
 mod ui;
 
-use gpui_kit::assets::Assets;
 use gpui_kit::*;
 
+use ui::icons::AppAssets;
 use ui::theme::{load_fonts, pal, palette, set_palette};
 
 actions!(podlogs, [Quit]);
@@ -31,9 +31,10 @@ impl Render for Root {
 }
 
 fn main() {
-    gpui_kit::application().with_assets(Assets).run(|cx: &mut App| {
+    gpui_kit::application().with_assets(AppAssets).run(|cx: &mut App| {
         gpui_kit::init(cx);
         load_fonts(cx);
+        ui::init(cx);
         set_palette(palette(!label_preview::enabled() || label_preview::dark()), cx);
 
         cx.on_action(|_: &Quit, cx| cx.quit());
