@@ -20,6 +20,7 @@ dirs = "5"
 [dev-dependencies]
 http = "1"
 tower = { version = "0.5", features = ["util"] }
+tokio = { version = "1", features = ["test-util"] }
 gpui-kit = { version = "=0.9.1", features = ["test-support"] }
 
 [profile.release]
