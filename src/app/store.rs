@@ -100,6 +100,8 @@ fn finish<K: Clone + Eq + Hash, T: Clone + CacheEmpty>(
 }
 
 impl Store {
+    pub(crate) fn api(&self) -> Arc<dyn Api> { self.api.clone() }
+
     pub fn new(api: Arc<dyn Api>, persisted: PersistedState, persist_path: Option<PathBuf>, cx: &mut Context<Self>) -> Self {
         let mut s = Self {
             api,

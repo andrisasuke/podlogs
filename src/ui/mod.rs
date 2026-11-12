@@ -7,6 +7,7 @@ pub mod gallery; // TEMPORARY
 pub mod icons;
 pub mod input;
 pub mod modal;
+pub mod mark_text;
 pub mod skeleton;
 pub mod theme;
 pub mod tracked_text;
