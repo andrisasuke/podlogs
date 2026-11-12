@@ -1,15 +1,18 @@
 use chrono::Utc;
 use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::Pod;
+use k8s_openapi::api::core::v1::ConfigMap;
 use kube::api::ListParams;
 use kube::Api;
 use std::collections::HashMap;
+use std::time::Duration;
+use futures::stream::{self, StreamExt};
 
 use crate::error::K8sError;
 use crate::k8s::client::get_client_for_context;
 use crate::models::{
     ContainerDetails, ContainerPort, EnvVar, PodCondition, PodDetails, PodInfo,
-    ResourceRequirements,
+    ResourceRequirements, EnvResolutionReason,
 };
 
 pub async fn get_pods(
@@ -95,9 +98,13 @@ pub async fn get_pod_details(
     pod_name: String,
 ) -> Result<PodDetails, K8sError> {
     let client = get_client_for_context(&context).await?;
-    let pods: Api<Pod> = Api::namespaced(client, &namespace);
+    get_pod_details_with_client(client, &namespace, &pod_name).await
+}
 
-    let pod = pods.get(&pod_name).await?;
+pub(super) async fn get_pod_details_with_client(client: kube::Client, namespace: &str, pod_name: &str) -> Result<PodDetails, K8sError> {
+    let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
+
+    let pod = pods.get(pod_name).await?;
 
     let name = pod.metadata.name.clone().unwrap_or_default();
     let ns = pod.metadata.namespace.clone().unwrap_or_default();
@@ -122,7 +129,8 @@ pub async fn get_pod_details(
     let annotations: HashMap<String, String> = pod.metadata.annotations.clone().unwrap_or_default().into_iter().collect();
 
     // Get container details
-    let containers = get_container_details(&pod);
+    let lookups = resolve_configmaps(&client, namespace, &pod).await;
+    let containers = crate::k8s::pod_env::expand_configmap_env(&pod, &lookups);
 
     // Get conditions
     let conditions = pod
@@ -155,6 +163,44 @@ pub async fn get_pod_details(
         containers,
         conditions,
     })
+}
+
+pub(super) async fn resolve_configmaps(client: &kube::Client, namespace: &str, pod: &Pod) -> crate::k8s::pod_env::ConfigMapLookups {
+    use std::collections::BTreeSet;
+    let mut names = BTreeSet::new();
+    if let Some(spec) = &pod.spec {
+        for c in &spec.containers {
+            if let Some(env) = &c.env { for e in env { if let Some(r) = e.value_from.as_ref().and_then(|v| v.config_map_key_ref.as_ref()) { names.insert(r.name.clone()); } } }
+            if let Some(from) = &c.env_from { for f in from { if let Some(r) = &f.config_map_ref { names.insert(r.name.clone()); } } }
+        }
+    }
+    let maps: Api<ConfigMap> = Api::namespaced(client.clone(), namespace);
+    let mut pending = names.clone();
+    let requests = stream::iter(names.iter().cloned().map(|name| {
+        let maps = maps.clone();
+        async move {
+            let result = tokio::time::timeout(Duration::from_secs(3), maps.get(&name)).await;
+            let mapped = match result {
+                Ok(Ok(cm)) => Ok(cm),
+                Ok(Err(kube::Error::Api(response))) if response.code == 403 => Err(EnvResolutionReason::Forbidden),
+                Ok(Err(kube::Error::Api(response))) if response.code == 404 => Err(EnvResolutionReason::NotFound),
+                Ok(Err(_)) => Err(EnvResolutionReason::Other),
+                Err(_) => Err(EnvResolutionReason::Timeout),
+            };
+            (name, mapped)
+        }
+    })).buffer_unordered(4);
+    let mut output = HashMap::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+    tokio::pin!(requests);
+    loop {
+        match tokio::time::timeout_at(deadline, requests.next()).await {
+            Ok(Some((name, result))) => { pending.remove(&name); output.insert(name, result); }
+            Ok(None) | Err(_) => break,
+        }
+    }
+    for name in pending { output.insert(name, Err(EnvResolutionReason::Timeout)); }
+    output
 }
 
 fn get_pod_status(pod: &Pod) -> String {
@@ -251,7 +297,7 @@ fn get_age(pod: &Pod) -> String {
     }
 }
 
-fn get_container_details(pod: &Pod) -> Vec<ContainerDetails> {
+pub(super) fn get_container_details(pod: &Pod) -> Vec<ContainerDetails> {
     let spec = match &pod.spec {
         Some(s) => s,
         None => return vec![],
@@ -293,59 +339,39 @@ fn get_container_details(pod: &Pod) -> Vec<ContainerDetails> {
                 .unwrap_or_else(|| "Unknown".to_string());
 
             // Collect env vars from 'env' field
-            let mut env_vars: Vec<EnvVar> = container
+            let env_vars: Vec<EnvVar> = container
                 .env
                 .as_ref()
                 .map(|envs| {
                     envs.iter()
                         .map(|e| {
-                            let (source, value) = if let Some(vf) = &e.value_from {
+                            let (source, value, reference) = if let Some(vf) = &e.value_from {
                                 if let Some(secret_ref) = &vf.secret_key_ref {
-                                    ("Secret", format!("{}:{}", secret_ref.name, secret_ref.key))
+                                    ("Secret", "<secret>".to_string(), Some(format!("{}:{}", secret_ref.name, secret_ref.key)))
                                 } else if let Some(cm_ref) = &vf.config_map_key_ref {
-                                    ("ConfigMap", format!("{}:{}", cm_ref.name, cm_ref.key))
+                                    ("ConfigMap", String::new(), Some(format!("{}:{}", cm_ref.name, cm_ref.key)))
                                 } else if let Some(field_ref) = &vf.field_ref {
-                                    ("FieldRef", field_ref.field_path.clone())
+                                    ("FieldRef", field_ref.field_path.clone(), None)
                                 } else if let Some(resource_ref) = &vf.resource_field_ref {
-                                    ("ResourceRef", resource_ref.resource.clone())
+                                    ("ResourceRef", resource_ref.resource.clone(), None)
                                 } else {
-                                    ("Reference", String::new())
+                                    ("Reference", String::new(), None)
                                 }
                             } else {
-                                ("Direct", e.value.clone().unwrap_or_default())
+                                ("Direct", e.value.clone().unwrap_or_default(), None)
                             };
 
                             EnvVar {
                                 name: e.name.clone(),
                                 value,
                                 source: source.to_string(),
+                                reference,
+                                resolution: crate::models::EnvResolution::Declared,
                             }
                         })
                         .collect()
                 })
                 .unwrap_or_default();
-
-            // Collect env vars from 'envFrom' field (ConfigMaps and Secrets)
-            if let Some(env_from) = &container.env_from {
-                for ef in env_from {
-                    if let Some(cm_ref) = &ef.config_map_ref {
-                        let prefix = ef.prefix.clone().unwrap_or_default();
-                        env_vars.push(EnvVar {
-                            name: format!("{}* (all keys)", prefix),
-                            value: format!("from ConfigMap: {}", cm_ref.name),
-                            source: "ConfigMap".to_string(),
-                        });
-                    }
-                    if let Some(secret_ref) = &ef.secret_ref {
-                        let prefix = ef.prefix.clone().unwrap_or_default();
-                        env_vars.push(EnvVar {
-                            name: format!("{}* (all keys)", prefix),
-                            value: format!("from Secret: {}", secret_ref.name),
-                            source: "Secret".to_string(),
-                        });
-                    }
-                }
-            }
 
             let ports = container
                 .ports
@@ -391,6 +417,7 @@ fn get_container_details(pod: &Pod) -> Vec<ContainerDetails> {
                 restart_count: cs.map(|s| s.restart_count).unwrap_or(0),
                 state,
                 env_vars,
+                env_issues: Vec::new(),
                 ports,
                 resources,
             }

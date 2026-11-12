@@ -36,6 +36,8 @@ pub struct ContainerDetails {
     pub restart_count: i32,
     pub state: String,
     pub env_vars: Vec<EnvVar>,
+    #[serde(default)]
+    pub env_issues: Vec<EnvResolutionIssue>,
     pub ports: Vec<ContainerPort>,
     pub resources: ResourceRequirements,
 }
@@ -45,6 +47,38 @@ pub struct EnvVar {
     pub name: String,
     pub value: String,
     pub source: String,
+    #[serde(default)]
+    pub reference: Option<String>,
+    #[serde(default)]
+    pub resolution: EnvResolution,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvResolution {
+    #[default]
+    Declared,
+    ConfigMapResolved,
+    Unavailable,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct EnvResolutionIssue {
+    pub source: String,
+    #[serde(default)]
+    pub key: Option<String>,
+    pub optional: bool,
+    pub reason: EnvResolutionReason,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvResolutionReason {
+    Forbidden,
+    NotFound,
+    MissingKey,
+    Timeout,
+    Other,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

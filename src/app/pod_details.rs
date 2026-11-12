@@ -2,7 +2,7 @@
 use std::collections::HashSet;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::Icon;
+use gpui_kit::component::{Icon, tooltip::Tooltip};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
@@ -18,6 +18,7 @@ pub struct PodDetailsView {
     store: Entity<Store>,
     scope: Option<(String, String, String)>,
     open_env: HashSet<String>,
+    expanded_env: HashSet<String>,
     conditions_open: bool,
     _sub: Subscription,
 }
@@ -32,14 +33,10 @@ impl PodDetailsView {
         let scope = pod_scope(store.read(cx));
         let sub = cx.observe(&store, |this, _, cx| {
             let scope = pod_scope(this.store.read(cx));
-            if this.scope != scope {
-                this.scope = scope;
-                this.open_env.clear();
-                this.conditions_open = false;
-            }
+            reset_detail_state(&mut this.scope, scope, &mut this.open_env, &mut this.expanded_env, &mut this.conditions_open);
             cx.notify();
         });
-        Self { store, scope, open_env: HashSet::new(), conditions_open: false, _sub: sub }
+        Self { store, scope, open_env: HashSet::new(), expanded_env: HashSet::new(), conditions_open: false, _sub: sub }
     }
 
     fn container(&self, container: &ContainerDetails, cx: &mut Context<Self>) -> AnyElement {
@@ -108,7 +105,7 @@ impl PodDetailsView {
                     .child(status_badge(&container.state, None, cx)),
             )
             .child(info);
-        if !container.env_vars.is_empty() {
+        if !container.env_vars.is_empty() || !container.env_issues.is_empty() {
             let open = self.open_env.contains(&container.name);
             let name = container.name.clone();
             let entity = cx.entity();
@@ -142,26 +139,91 @@ impl PodDetailsView {
                     .gap(px(4.))
                     .t_sm()
                     .children(container.env_vars.iter().enumerate().map(|(i, env)| {
+                        let row_key = format!("{}:{i}", container.name);
+                        let expanded = self.expanded_env.contains(&row_key);
                         let value = displayed_env_value(env);
+                        let unavailable = env.resolution == crate::models::EnvResolution::Unavailable;
+                        let expandable = env.source == "ConfigMap" && env.resolution == crate::models::EnvResolution::ConfigMapResolved;
+                        let env_name = env.name.clone();
                         let copy_value = value.to_owned();
-                        div()
-                            .flex()
+                        let copy = div()
+                            .id(SharedString::from(format!("pod-env-copy-{}-{i}", container.name)))
+                            .test_support()
+                            .flex_none()
+                            .cursor_pointer()
+                            .text_color(p.muted)
+                            .child(Icon::new(IconName::Copy).size_4())
+                            .on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(copy_value.clone())));
+                        let detail = (expandable && expanded).then(|| div()
+                            .id(SharedString::from(format!("pod-env-detail-{}-{i}", container.name)))
+                            .test_support()
                             .min_w_0()
-                            .items_center()
-                            .gap(px(8.))
+                            .max_h(px(180.))
+                            .w_full()
+                            .overflow_x_scroll()
+                            .overflow_y_scroll()
+                            .mt(px(6.))
+                            .p(px(8.))
+                            .bg(p.bg3)
+                            .rounded(px(4.))
+                            .mono()
+                            .text_color(p.text2)
+                            .child(if value.is_empty() { div().child("(empty)").into_any_element() } else { selectable_text(format!("env-detail-{}-{i}", container.name), value).into_any_element() }));
+                        let toggle_detail = (expandable && !unavailable).then(|| {
+                            let key = row_key.clone();
+                            let entity = cx.entity();
+                            div().id(SharedString::from(format!("pod-env-expand-{}-{i}", container.name))).test_support()
+                                .cursor_pointer().text_color(hex(if p.dark { tw::CYAN_400 } else { tw::CYAN_500 }))
+                                .child(if expanded { "Hide full value" } else { "Show full value" })
+                                .on_click(move |_, _, cx| entity.update(cx, |this, cx| {
+                                    if !this.expanded_env.remove(&key) { this.expanded_env.insert(key.clone()); }
+                                    cx.notify();
+                                }))
+                        });
+                        div()
+                            .id(SharedString::from(format!("pod-env-row-{}-{i}", container.name)))
+                            .test_support()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .gap(px(4.))
                             .py(px(4.))
                             .px(px(8.))
                             .bg(p.bg2)
                             .rounded(px(4.))
-                            .child(div().mono().text_color(hex(if p.dark { tw::CYAN_400 } else { tw::CYAN_500 })).child(env.name.clone()))
-                            .child(div().min_w_0().flex_1().overflow_hidden().mono().text_color(p.text2)
-                                .child(selectable_text(format!("env-value-{}-{i}", container.name), value).max_lines(1)))
-                            .child(div().flex_none().t_xs().text_color(p.muted).child(env.source.clone()))
-                            .child(div().id(SharedString::from(format!("pod-env-copy-{}-{i}", container.name))).test_support()
-                                .flex_none().cursor_pointer().text_color(p.muted)
-                                .child(Icon::new(IconName::Copy).size_4())
-                                .on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(copy_value.clone()))))
+                            .child(div().flex().min_w_0().items_center().gap(px(8.))
+                            .child(div().id(SharedString::from(format!("pod-env-name-{}-{i}", container.name))).test_support().w(px(120.)).min_w_0().flex_none().truncate().tooltip(move |w, cx| Tooltip::new(env_name.clone()).build(w, cx)).mono().text_color(hex(if p.dark { tw::CYAN_400 } else { tw::CYAN_500 })).child(env.name.clone()))
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!("pod-env-value-{}-{i}", container.name)))
+                                    .test_support()
+                                    .min_w_0()
+                                    .flex_1()
+                                    .overflow_hidden()
+                                    .mono()
+                                    .text_color(if unavailable { p.muted } else { p.text2 })
+                                    .child(if unavailable { div().child("Unavailable").into_any_element() } else if value.is_empty() { div().child("(empty)").into_any_element() } else { selectable_text(format!("env-value-{}-{i}", container.name), value).max_lines(1).into_any_element() }),
+                            )
+                            .children(toggle_detail)
+                            .child(div().id(SharedString::from(format!("pod-env-source-{}-{i}", container.name))).test_support().flex_none().t_xs().text_color(p.muted).child(env.source.clone()))
+                            .children((!unavailable).then_some(copy)))
+                            .children(env.reference.as_ref().map(|reference| div().id(SharedString::from(format!("pod-env-reference-{}-{i}", container.name))).test_support().ml(px(4.)).t_xs().mono().text_color(p.muted).child(reference.clone())))
+                            .children(detail)
                     }))
+                    .children(container.env_issues.iter().enumerate().map(|(i, issue)| {
+                        let reason = match issue.reason {
+                            crate::models::EnvResolutionReason::Forbidden => "access denied",
+                            crate::models::EnvResolutionReason::NotFound => "not found",
+                            crate::models::EnvResolutionReason::MissingKey => "key not found",
+                            crate::models::EnvResolutionReason::Timeout => "lookup timed out",
+                            crate::models::EnvResolutionReason::Other => "lookup failed",
+                        };
+                        let key = issue.key.as_deref().map(|k| format!(":{k}")).unwrap_or_default();
+                        div().id(SharedString::from(format!("pod-env-issue-{}-{i}", container.name))).test_support().t_xs().text_color(p.muted).child(format!("{}{}: {}{}", issue.source, key, if issue.optional { "optional source unavailable · " } else { "" }, reason))
+                    }))
+                    .when(container.env_vars.iter().any(|env| env.source == "ConfigMap") || !container.env_issues.is_empty(), |d| {
+                        d.child(div().id(SharedString::from(format!("pod-env-current-config-{}", container.name))).test_support().mt(px(4.)).t_xs().text_color(p.muted).child("ConfigMap values reflect the current configuration and may differ from a running container."))
+                    })
             });
             card = card.child(div().mt(px(16.)).child(toggle).children(env_rows));
         }
@@ -260,6 +322,21 @@ fn pod_scope(store: &Store) -> Option<(String, String, String)> {
     }
 }
 
+fn reset_detail_state(
+    current_scope: &mut Option<(String, String, String)>,
+    next_scope: Option<(String, String, String)>,
+    open_env: &mut HashSet<String>,
+    expanded_env: &mut HashSet<String>,
+    conditions_open: &mut bool,
+) {
+    if *current_scope != next_scope {
+        *current_scope = next_scope;
+        open_env.clear();
+        expanded_env.clear();
+        *conditions_open = false;
+    }
+}
+
 fn section(title: &str, body: impl IntoElement, cx: &App) -> Div {
     div().child(div().mb(px(12.)).child(section_label(title.to_owned(), cx))).child(body)
 }
@@ -301,6 +378,7 @@ mod tests {
     use gpui_kit::test::TestWindowExt;
     use gpui_kit::{AppContext, TestAppContext};
     use serde_json::json;
+    use std::collections::HashSet;
 
     use crate::api::fake::Endpoint;
     use crate::app::store::{DrawerKind, View};
@@ -368,10 +446,108 @@ mod tests {
 
     #[test]
     fn masks_secret_source_before_rendering() {
-        let mut env = crate::models::EnvVar { name: "TOKEN".into(), value: "private".into(), source: "Secret".into() };
+        let mut env = crate::models::EnvVar { name: "TOKEN".into(), value: "private".into(), source: "Secret".into(), reference: None, resolution: crate::models::EnvResolution::Declared };
         assert_eq!(super::displayed_env_value(&env), "<secret>");
         env.source = "ConfigMap".into();
         assert_eq!(super::displayed_env_value(&env), "private");
     }
 
+    #[test]
+    fn resets_environment_detail_state_when_pod_scope_changes() {
+        let mut scope = Some(("ctx".into(), "ns".into(), "first".into()));
+        let mut open = HashSet::from(["app".to_string()]);
+        let mut expanded = HashSet::from(["app:0".to_string()]);
+        let mut conditions_open = true;
+        super::reset_detail_state(&mut scope, Some(("ctx".into(), "ns".into(), "second".into())), &mut open, &mut expanded, &mut conditions_open);
+        assert_eq!(scope.as_ref().unwrap().2, "second");
+        assert!(open.is_empty());
+        assert!(expanded.is_empty());
+        assert!(!conditions_open);
+    }
+
+    #[gpui_kit::test]
+    fn configmap_long_values_expand_and_copy_and_issue_only_container_is_visible(cx: &mut TestAppContext) {
+        let long = format!("line one\n{}", "long-value-".repeat(24));
+        let api = with_pods(vec![pod("api-123", "Running")]);
+        many(&api, Endpoint::PodDetails, json!({
+            "name":"api-123","namespace":"default","status":"Running","node":"worker-1","ip":"10.0.0.1",
+            "start_time":null,"labels":{},"annotations":{},"conditions":[],"containers":[
+                {"name":"app","image":"example/api","ready":true,"restart_count":0,"state":"Running",
+                 "env_vars":[{"name":"CONFIG","value":long,"source":"ConfigMap","reference":"app-config:application.yaml","resolution":"config_map_resolved"},{"name":"EMPTY","value":"","source":"ConfigMap","reference":"app-config:empty","resolution":"config_map_resolved"},{"name":"MISSING","value":"error text must not be shown","source":"ConfigMap","reference":"app-config:missing","resolution":"unavailable"}],"env_issues":[],"ports":[],
+                 "resources":{"cpu_request":null,"cpu_limit":null,"memory_request":null,"memory_limit":null}},
+                {"name":"broken","image":"example/broken","ready":false,"restart_count":0,"state":"Running",
+                 "env_vars":[],"env_issues":[{"source":"missing","key":"A","optional":false,"reason":"not_found"},{"source":"missing","key":"B","optional":false,"reason":"not_found"}],"ports":[],
+                 "resources":{"cpu_request":null,"cpu_limit":null,"memory_request":null,"memory_limit":null}}
+            ]
+        }), 5);
+        let env = boot(cx, api, None);
+        env.store.update(cx, |s, cx| s.set_view(View::Pods, cx));
+        cx.update_window(env.handle, |_, window, cx| { window.render_frame(cx); window.click("pod-info-api-123", cx); }).unwrap();
+        cx.run_until_parked();
+        settle_animation(cx);
+        cx.update_window(env.handle, |_, window, cx| {
+            window.render_frame(cx);
+            assert!(window.try_find("pod-env-toggle-broken").is_some());
+            window.click("pod-env-toggle-broken", cx);
+            window.click("pod-env-toggle-app", cx);
+            window.click("pod-env-expand-app-0", cx);
+        }).unwrap();
+        cx.run_until_parked();
+        cx.update_window(env.handle, |_, window, cx| {
+            window.render_frame(cx);
+            assert!(window.try_find("pod-env-reference-app-0").is_some());
+            assert!(window.try_find("pod-env-current-config-app").is_some());
+            assert!(window.try_find("pod-env-detail-app-0").is_some());
+            assert!(window.try_find("pod-env-value-app-1").is_some());
+            assert!(window.try_find("pod-env-value-app-2").is_some());
+            assert!(window.try_find("pod-env-copy-app-2").is_none());
+            assert!(window.try_find("pod-env-issue-broken-0").is_some());
+            assert!(window.try_find("pod-env-issue-broken-1").is_some());
+            window.click("pod-env-copy-app-0", cx);
+        }).unwrap();
+        assert_eq!(cx.read_from_clipboard().unwrap().text().as_deref(), Some(long.as_str()));
+        cx.update_window(env.handle, |_, window, cx| window.click("pod-env-copy-app-1", cx)).unwrap();
+        assert!(cx.read_from_clipboard().is_some());
+    }
+
+    #[gpui_kit::test]
+    fn short_configmap_value_with_long_name_stays_inside_drawer_and_expands(cx: &mut TestAppContext) {
+        let value = "short-value";
+        let long_name = "CONFIGURATION_VARIABLE_NAME_THAT_IS_LONG_ENOUGH_TO_CONSUME_THE_DRAWER_WIDTH_AND_MUST_NOT_PUSH_CONTROLS_OUTSIDE_ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789";
+        let api = with_pods(vec![pod("api-123", "Running")]);
+        many(&api, Endpoint::PodDetails, json!({
+            "name":"api-123","namespace":"default","status":"Running","node":"worker-1","ip":"10.0.0.1",
+            "start_time":null,"labels":{},"annotations":{},"conditions":[],"containers":[
+                {"name":"app","image":"example/api","ready":true,"restart_count":0,"state":"Running",
+                 "env_vars":[{"name":long_name,"value":value,"source":"ConfigMap","reference":"app-config:key","resolution":"config_map_resolved"}],"env_issues":[],"ports":[],
+                 "resources":{"cpu_request":null,"cpu_limit":null,"memory_request":null,"memory_limit":null}}
+            ]
+        }), 5);
+        let env = boot(cx, api, None);
+        env.store.update(cx, |s, cx| s.set_view(View::Pods, cx));
+        cx.update_window(env.handle, |_, window, cx| { window.render_frame(cx); window.click("pod-info-api-123", cx); }).unwrap();
+        cx.run_until_parked();
+        settle_animation(cx);
+        cx.update_window(env.handle, |_, window, cx| {
+            window.render_frame(cx);
+            window.click("pod-env-toggle-app", cx);
+            window.render_frame(cx);
+            assert!(window.try_find("pod-env-expand-app-0").is_some(), "short ConfigMap values still need full-value access");
+            window.click("pod-env-expand-app-0", cx);
+            window.render_frame(cx);
+            assert!(window.try_find("pod-env-detail-app-0").is_some());
+            let panel = window.find((gpui_kit::ElementId::from("drawer-pod"), "panel")).bounds();
+            let panel_right = panel.origin.x + panel.size.width;
+            let row = window.find("pod-env-row-app-0").bounds();
+            let name = window.find("pod-env-name-app-0").bounds();
+            assert!(name.size.width <= gpui_kit::px(120.));
+            assert!(row.origin.x + row.size.width <= panel_right);
+            for id in ["pod-env-source-app-0", "pod-env-expand-app-0", "pod-env-copy-app-0"] {
+                let bounds = window.find(id).bounds();
+                assert!(bounds.origin.x + bounds.size.width <= panel_right, "{id} must remain within the drawer");
+            }
+            window.click("pod-env-copy-app-0", cx);
+        }).unwrap();
+        assert_eq!(cx.read_from_clipboard().unwrap().text().as_deref(), Some(value));
+    }
 }
