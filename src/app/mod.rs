@@ -85,8 +85,9 @@ pub mod testing {
         Env { api, store, app, handle }
     }
 
-    /// Drawers animate on the wall clock (300 ms); wait it out before hit-testing inside one.
-    pub fn settle_animation() {
-        std::thread::sleep(Duration::from_millis(350));
+    /// Advance the test clock past the 300 ms drawer animation.
+    pub fn settle_animation(cx: &mut TestAppContext) {
+        cx.executor().advance_clock(Duration::from_millis(350));
+        cx.run_until_parked();
     }
 }

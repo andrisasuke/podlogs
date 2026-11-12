@@ -6,6 +6,9 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 use super::error_dialog::connection_error;
+use super::deployment_details::DeploymentDetailsView;
+use super::deployments::DeploymentsView;
+use super::settings::SettingsView;
 use super::sidebar::SidebarView;
 use super::status_bar::status_bar;
 use super::store::{DrawerKind, Store, View};
@@ -30,6 +33,9 @@ pub fn show_about(cx: &mut App) {
 pub struct PodLogsApp {
     pub store: Entity<Store>,
     pub sidebar: Entity<SidebarView>,
+    pub(crate) deployments: Entity<DeploymentsView>,
+    deployment_details: Entity<DeploymentDetailsView>,
+    settings: Entity<SettingsView>,
     menu_bar: Option<Entity<AppMenuBar>>,
     about_open: bool,
     about_epoch: usize,
@@ -44,10 +50,16 @@ impl PodLogsApp {
     pub fn new(store: Entity<Store>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.set_global(RootHandle(cx.entity().downgrade()));
         let sidebar = cx.new(|cx| SidebarView::new(store.clone(), window, cx));
+        let deployments = cx.new(|cx| DeploymentsView::new(store.clone(), window, cx));
+        let deployment_details = cx.new(|cx| DeploymentDetailsView::new(store.clone(), window, cx));
+        let settings = cx.new(|cx| SettingsView::new(store.clone(), window, cx));
         let menu_bar = (!cfg!(target_os = "macos")).then(|| super::menus::menu_bar(window, cx));
         let os_dark = store.clone();
         let subs = vec![
-            cx.observe(&store, |this, _, cx| this.apply_palette(cx)),
+            cx.observe(&store, |this, _, cx| {
+                this.apply_palette(cx);
+                cx.notify();
+            }),
             window.observe_window_appearance(move |window, cx| {
                 let dark = is_dark(window.appearance());
                 os_dark.update(cx, |s, cx| s.set_os_dark(dark, cx));
@@ -55,7 +67,7 @@ impl PodLogsApp {
         ];
         let dark = is_dark(window.appearance());
         store.update(cx, |s, cx| s.set_os_dark(dark, cx));
-        let mut this = Self { store, sidebar, menu_bar, about_open: false, about_epoch: 0, _subs: subs };
+        let mut this = Self { store, sidebar, deployments, deployment_details, settings, menu_bar, about_open: false, about_epoch: 0, _subs: subs };
         this.apply_palette(cx);
         this
     }
@@ -80,9 +92,11 @@ impl Render for PodLogsApp {
         let store = self.store.clone();
         let close_drawer: OnClose = Rc::new(move |_, cx| store.update(cx, |s, cx| s.close_drawer(cx)));
 
-        // Until Tasks 10-13 land, the views are empty placeholders.
         let main = match view {
-            View::Deployments | View::Pods | View::Logs | View::Search => div().size_full().into_any_element(),
+            View::Deployments => self.deployments.clone().into_any_element(),
+            View::Pods => div().size_full().into_any_element(),
+            View::Logs => div().size_full().into_any_element(),
+            View::Search => div().size_full().into_any_element(),
         };
 
         let pod_title = match &drawer_kind {
@@ -93,10 +107,24 @@ impl Render for PodLogsApp {
             "drawer-pod",
             &pod_title,
             matches!(drawer_kind, Some(DrawerKind::Pod(_))),
-            close_drawer,
+            close_drawer.clone(),
             div().into_any_element(),
             window,
             cx,
+        );
+
+        let deployment_title = match &drawer_kind {
+            Some(DrawerKind::Deployment(name)) => name.as_str(),
+            _ => "",
+        };
+        let deployment_drawer = drawer(
+            "drawer-deployment", deployment_title,
+            matches!(drawer_kind, Some(DrawerKind::Deployment(_))),
+            close_drawer.clone(), self.deployment_details.clone().into_any_element(), window, cx,
+        );
+        let settings_drawer = drawer(
+            "drawer-settings", "Settings", matches!(drawer_kind, Some(DrawerKind::Settings)),
+            close_drawer, self.settings.clone().into_any_element(), window, cx,
         );
 
         let about = self.about_open.then(|| {
@@ -161,6 +189,8 @@ impl Render for PodLogsApp {
                     ),
             )
             .child(pod_drawer)
+            .child(deployment_drawer)
+            .child(settings_drawer)
             .children(about)
             .children(error_dialog)
     }
