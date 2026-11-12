@@ -8,6 +8,8 @@ use gpui_kit::*;
 use super::error_dialog::connection_error;
 use super::deployment_details::DeploymentDetailsView;
 use super::deployments::DeploymentsView;
+use super::pod_details::PodDetailsView;
+use super::pods::PodsView;
 use super::settings::SettingsView;
 use super::sidebar::SidebarView;
 use super::status_bar::status_bar;
@@ -34,6 +36,8 @@ pub struct PodLogsApp {
     pub store: Entity<Store>,
     pub sidebar: Entity<SidebarView>,
     pub(crate) deployments: Entity<DeploymentsView>,
+    pub(crate) pods: Entity<PodsView>,
+    pod_details: Entity<PodDetailsView>,
     deployment_details: Entity<DeploymentDetailsView>,
     settings: Entity<SettingsView>,
     menu_bar: Option<Entity<AppMenuBar>>,
@@ -51,6 +55,8 @@ impl PodLogsApp {
         cx.set_global(RootHandle(cx.entity().downgrade()));
         let sidebar = cx.new(|cx| SidebarView::new(store.clone(), window, cx));
         let deployments = cx.new(|cx| DeploymentsView::new(store.clone(), window, cx));
+        let pods = cx.new(|cx| PodsView::new(store.clone(), window, cx));
+        let pod_details = cx.new(|cx| PodDetailsView::new(store.clone(), window, cx));
         let deployment_details = cx.new(|cx| DeploymentDetailsView::new(store.clone(), window, cx));
         let settings = cx.new(|cx| SettingsView::new(store.clone(), window, cx));
         let menu_bar = (!cfg!(target_os = "macos")).then(|| super::menus::menu_bar(window, cx));
@@ -67,7 +73,7 @@ impl PodLogsApp {
         ];
         let dark = is_dark(window.appearance());
         store.update(cx, |s, cx| s.set_os_dark(dark, cx));
-        let mut this = Self { store, sidebar, deployments, deployment_details, settings, menu_bar, about_open: false, about_epoch: 0, _subs: subs };
+        let mut this = Self { store, sidebar, deployments, pods, pod_details, deployment_details, settings, menu_bar, about_open: false, about_epoch: 0, _subs: subs };
         this.apply_palette(cx);
         this
     }
@@ -94,7 +100,7 @@ impl Render for PodLogsApp {
 
         let main = match view {
             View::Deployments => self.deployments.clone().into_any_element(),
-            View::Pods => div().size_full().into_any_element(),
+            View::Pods => self.pods.clone().into_any_element(),
             View::Logs => div().size_full().into_any_element(),
             View::Search => div().size_full().into_any_element(),
         };
@@ -108,7 +114,7 @@ impl Render for PodLogsApp {
             &pod_title,
             matches!(drawer_kind, Some(DrawerKind::Pod(_))),
             close_drawer.clone(),
-            div().into_any_element(),
+            self.pod_details.clone().into_any_element(),
             window,
             cx,
         );

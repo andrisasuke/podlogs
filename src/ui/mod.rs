@@ -19,6 +19,12 @@ use gpui_kit::*;
 use theme::{Tw, pal};
 use tracked_text::tracked;
 
+/// Literal Kubernetes text with mouse selection; markup in values stays literal.
+pub fn selectable_text(id: impl Into<SharedString>, text: &str) -> gpui_kit::component::text::TextView {
+    let escaped = text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\n', "<br>");
+    gpui_kit::component::text::TextView::html(id.into(), escaped).selectable(true)
+}
+
 /// `text-xs font-medium text-text-muted uppercase tracking-wider`. Callers pass the uppercase string.
 pub fn section_label(text: impl Into<SharedString>, cx: &App) -> impl IntoElement {
     div()

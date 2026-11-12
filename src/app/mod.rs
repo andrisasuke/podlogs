@@ -2,6 +2,8 @@ pub mod deployment_details;
 pub mod deployments;
 pub mod error_dialog;
 pub mod menus;
+pub mod pod_details;
+pub mod pods;
 pub mod query;
 pub mod root;
 pub mod settings;
@@ -38,6 +40,18 @@ pub mod testing {
 
     pub fn deployment(name: &str, replicas: i32, available: i32, ready: i32) -> Value {
         json!({"name": name, "namespace": "default", "replicas": replicas, "available_replicas": available, "ready_replicas": ready})
+    }
+
+    pub fn pod(name: &str, status: &str) -> Value {
+        json!({"name": name, "namespace": "default", "status": status, "ready": "1/1",
+            "restarts": 0, "age": "2h", "ip": "10.0.0.1", "node": "worker-1", "containers": ["app"]})
+    }
+
+    pub fn with_pods(pods: Vec<Value>) -> Arc<FakeApi> {
+        let api = Arc::new(FakeApi::default());
+        many(&api, E::Pods, Value::Array(pods), 50);
+        seed(&api, vec![]);
+        api
     }
 
     /// One cluster "c1" (current), namespace "default", the given deployments, no pods; replies queued for a long session.
