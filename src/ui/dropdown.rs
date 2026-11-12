@@ -189,7 +189,7 @@ impl Render for DropdownState {
                                 .flex()
                                 .flex_col()
                                 .when_some(self.search.as_ref(), |d, s| {
-                                    d.child(div().p(px(8.)).border_b_1().border_color(p.border).child(search_input(s, cx).h(px(32.))))
+                                    d.child(div().p(px(8.)).border_b_1().border_color(p.border).child(Styled::h(search_input(s, cx), px(32.))))
                                 })
                                 .child(
                                     div()

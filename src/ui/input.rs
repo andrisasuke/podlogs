@@ -7,7 +7,7 @@ use super::theme::{Tw, pal};
 
 pub fn text_input(state: &Entity<InputState>, cx: &App) -> Input {
     let p = pal(cx);
-    Input::new(state).h(px(36.)).t_sm().rounded(px(6.)).bg(p.bg3).border_color(p.border)
+    Styled::h(Input::new(state), px(36.)).t_sm().rounded(px(6.)).bg(p.bg3).border_color(p.border)
 }
 
 pub fn search_input(state: &Entity<InputState>, cx: &App) -> Input {
