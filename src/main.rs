@@ -33,6 +33,7 @@ fn main() {
     gpui_kit::application().with_assets(AppAssets).run(move |cx: &mut App| {
         gpui_kit::init(cx);
         load_fonts(cx);
+        ui::theme::match_webkit_antialiasing();
         ui::init(cx);
         menus::install(cx);
         set_palette(palette(!ui::gallery::enabled() || ui::gallery::start_dark()), cx);

@@ -145,9 +145,60 @@ pub fn load_fonts(cx: &mut App) {
         .expect("embedded fonts are valid");
 }
 
+/// The React app sets `-webkit-font-smoothing: antialiased`, i.e. no macOS stem darkening.
+/// gpui emulates font smoothing (thicker glyphs) unless `AppleFontSmoothing` reads 0, so register
+/// 0 as this process's fallback default before the first glyph is painted. It is volatile (never
+/// written to disk), and an explicit user or global `AppleFontSmoothing` setting still wins.
+pub fn match_webkit_antialiasing() {
+    #[cfg(target_os = "macos")]
+    mac::register_no_font_smoothing();
+}
+
+#[cfg(target_os = "macos")]
+#[allow(unexpected_cfgs)] // objc 0.2 macros probe `cfg(feature = "cargo-clippy")`
+mod mac {
+    use objc::runtime::Object;
+    use objc::{class, msg_send, sel, sel_impl};
+
+    fn key() -> *mut Object {
+        unsafe { msg_send![class!(NSString), stringWithUTF8String: c"AppleFontSmoothing".as_ptr()] }
+    }
+
+    pub fn register_no_font_smoothing() {
+        objc::rc::autoreleasepool(|| unsafe {
+            let zero: *mut Object = msg_send![class!(NSNumber), numberWithInt: 0i32];
+            let dict: *mut Object = msg_send![class!(NSDictionary), dictionaryWithObject: zero forKey: key()];
+            let defaults: *mut Object = msg_send![class!(NSUserDefaults), standardUserDefaults];
+            let _: () = msg_send![defaults, registerDefaults: dict];
+        });
+    }
+
+    /// The exact lookup gpui-pre-apple's `font_smoothing_allowed_by_user` performs.
+    #[cfg(test)]
+    pub fn app_font_smoothing() -> Option<i32> {
+        use std::ffi::c_void;
+        #[link(name = "CoreFoundation", kind = "framework")]
+        unsafe extern "C" {
+            static kCFPreferencesCurrentApplication: *const c_void;
+            fn CFPreferencesCopyAppValue(key: *const c_void, app: *const c_void) -> *mut Object;
+        }
+        objc::rc::autoreleasepool(|| unsafe {
+            let v = CFPreferencesCopyAppValue(key() as *const c_void, kCFPreferencesCurrentApplication);
+            (!v.is_null()).then(|| msg_send![v, intValue])
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{hex, palette}; // not `*`: gpui re-exports a `test` macro that shadows #[test]
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn font_smoothing_off_like_webkit_antialiased() {
+        super::match_webkit_antialiasing();
+        assert_eq!(super::mac::app_font_smoothing(), Some(0));
+    }
 
     #[test]
     fn palette_matches_index_css() {

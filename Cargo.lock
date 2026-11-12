@@ -5671,6 +5671,7 @@ dependencies = [
  "http",
  "k8s-openapi",
  "kube",
+ "objc",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
