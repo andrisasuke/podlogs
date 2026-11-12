@@ -8,6 +8,7 @@ use gpui_kit::*;
 use super::error_dialog::connection_error;
 use super::deployment_details::DeploymentDetailsView;
 use super::deployments::DeploymentsView;
+use super::log_viewer::LogViewerView;
 use super::pod_details::PodDetailsView;
 use super::pods::PodsView;
 use super::settings::SettingsView;
@@ -38,6 +39,7 @@ pub struct PodLogsApp {
     pub(crate) deployments: Entity<DeploymentsView>,
     pub(crate) pods: Entity<PodsView>,
     pod_details: Entity<PodDetailsView>,
+    pub(crate) log_viewer: Entity<LogViewerView>,
     deployment_details: Entity<DeploymentDetailsView>,
     settings: Entity<SettingsView>,
     menu_bar: Option<Entity<AppMenuBar>>,
@@ -57,6 +59,7 @@ impl PodLogsApp {
         let deployments = cx.new(|cx| DeploymentsView::new(store.clone(), window, cx));
         let pods = cx.new(|cx| PodsView::new(store.clone(), window, cx));
         let pod_details = cx.new(|cx| PodDetailsView::new(store.clone(), window, cx));
+        let log_viewer = cx.new(|cx| LogViewerView::new(store.clone(), window, cx));
         let deployment_details = cx.new(|cx| DeploymentDetailsView::new(store.clone(), window, cx));
         let settings = cx.new(|cx| SettingsView::new(store.clone(), window, cx));
         let menu_bar = (!cfg!(target_os = "macos")).then(|| super::menus::menu_bar(window, cx));
@@ -73,7 +76,7 @@ impl PodLogsApp {
         ];
         let dark = is_dark(window.appearance());
         store.update(cx, |s, cx| s.set_os_dark(dark, cx));
-        let mut this = Self { store, sidebar, deployments, pods, pod_details, deployment_details, settings, menu_bar, about_open: false, about_epoch: 0, _subs: subs };
+        let mut this = Self { store, sidebar, deployments, pods, pod_details, log_viewer, deployment_details, settings, menu_bar, about_open: false, about_epoch: 0, _subs: subs };
         this.apply_palette(cx);
         this
     }
@@ -101,7 +104,7 @@ impl Render for PodLogsApp {
         let main = match view {
             View::Deployments => self.deployments.clone().into_any_element(),
             View::Pods => self.pods.clone().into_any_element(),
-            View::Logs => div().size_full().into_any_element(),
+            View::Logs => self.log_viewer.clone().into_any_element(),
             View::Search => div().size_full().into_any_element(),
         };
 

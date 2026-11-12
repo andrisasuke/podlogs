@@ -1,6 +1,8 @@
 pub mod deployment_details;
 pub mod deployments;
 pub mod error_dialog;
+pub mod log_detail_modal;
+pub mod log_viewer;
 pub mod menus;
 pub mod pod_details;
 pub mod pods;
