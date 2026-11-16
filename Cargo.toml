@@ -5,6 +5,15 @@ description = "Kubernetes Pod Log Viewer"
 authors = ["PodLogs"]
 edition = "2024"
 
+[package.metadata.packager]
+product-name = "PodLogs"
+identifier = "dev.podlogs.pass"
+icons = ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"]
+resources = ["assets/fonts/OFL-JetBrainsMono.txt", "assets/fonts/OFL-IBMPlexSans.txt"]
+
+[package.metadata.packager.macos]
+minimum-system-version = "12.0"
+
 [dependencies]
 gpui-kit = "=0.9.1"
 serde = { version = "1", features = ["derive"] }
