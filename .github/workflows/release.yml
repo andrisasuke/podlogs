@@ -2,46 +2,63 @@ name: Build and Release
 
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:  # Allow manual trigger from GitHub UI
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check-version:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       version: ${{ steps.get_version.outputs.version }}
       should_release: ${{ steps.check_tag.outputs.should_release }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Get version from tauri.conf.json
+      - name: Read root package version
         id: get_version
         run: |
-          VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "podlogs" and .manifest_path == "'"$GITHUB_WORKSPACE"'/Cargo.toml") | .version')
+          test -n "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Version: $VERSION"
-
       - name: Check if tag exists
         id: check_tag
+        env:
+          VERSION: ${{ steps.get_version.outputs.version }}
         run: |
-          VERSION=${{ steps.get_version.outputs.version }}
-          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+          if git rev-parse "refs/tags/v$VERSION" >/dev/null 2>&1; then
             echo "Tag v$VERSION already exists"
-            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
           else
             echo "Tag v$VERSION does not exist, will create release"
-            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
           fi
 
-  build-macos:
+  test:
     needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.1
+      - name: Show pinned toolchain
+        run: rustup show
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-x11-dev libwayland-dev libx11-xcb-dev libfontconfig-dev libvulkan1 libxkbcommon-dev libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgl1-mesa-dev libssl-dev pkg-config
+      - name: Test
+        run: cargo test --locked
+
+  build-macos:
+    needs: [check-version, test]
     if: needs.check-version.outputs.should_release == 'true'
     strategy:
       fail-fast: false
@@ -49,220 +66,146 @@ jobs:
         include:
           - target: aarch64-apple-darwin
             arch: aarch64
+            runner: macos-15
           - target: x86_64-apple-darwin
             arch: x64
-
-    runs-on: macos-latest
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
         with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
+          toolchain: 1.99.1
           targets: ${{ matrix.target }}
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+      - name: Show pinned toolchain
+        run: rustup show
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --version 0.11.8 --locked
+      - name: Build DMG
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: --target ${{ matrix.target }}
-
-      - name: Rename DMG with architecture
+          MACOSX_DEPLOYMENT_TARGET: "12.0"
         run: |
-          VERSION=${{ needs.check-version.outputs.version }}
-          DMG_FILE=$(find src-tauri/target/${{ matrix.target }}/release/bundle/dmg -name "*.dmg" | head -1)
-          if [ -f "$DMG_FILE" ]; then
-            NEW_NAME="PodLogs_${VERSION}_macos_${{ matrix.arch }}.dmg"
-            mv "$DMG_FILE" "src-tauri/target/${{ matrix.target }}/release/bundle/dmg/${NEW_NAME}"
-            echo "Renamed to: ${NEW_NAME}"
-          fi
-
-      - name: Upload macOS DMG
-        uses: actions/upload-artifact@v4
+          cargo build --release --locked --target ${{ matrix.target }}
+          cargo packager --release --target ${{ matrix.target }} --formats dmg
+      - name: Rename and verify DMG
+        env:
+          VERSION: ${{ needs.check-version.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          DMG_FILE=$(find target -type f -name '*.dmg' -print -quit)
+          test -n "$DMG_FILE"
+          mv "$DMG_FILE" "$(dirname "$DMG_FILE")/PodLogs_${VERSION}_macos_${ARCH}.dmg"
+      - uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.arch }}
-          path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/PodLogs_*.dmg
+          path: target/**/PodLogs_*_macos_*.dmg
           if-no-files-found: error
 
   build-linux:
-    needs: check-version
+    needs: [check-version, test]
     if: needs.check-version.outputs.should_release == 'true'
-    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: amd64
+          - runner: ubuntu-22.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
         with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Linux dependencies
+          toolchain: 1.99.1
+      - name: Show pinned toolchain
+        run: rustup show
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            librsvg2-dev \
-            patchelf \
-            libssl-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Rename artifacts with architecture
+          sudo apt-get install -y libxkbcommon-x11-dev libwayland-dev libx11-xcb-dev libfontconfig-dev libvulkan1 libxkbcommon-dev libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgl1-mesa-dev libssl-dev pkg-config patchelf libfuse2
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --version 0.11.8 --locked
+      - name: Build DEB and AppImage
         run: |
-          VERSION=${{ needs.check-version.outputs.version }}
-
-          # Rename DEB
-          DEB_FILE=$(find src-tauri/target/release/bundle/deb -name "*.deb" | head -1)
-          if [ -f "$DEB_FILE" ]; then
-            NEW_NAME="PodLogs_${VERSION}_linux_amd64.deb"
-            mv "$DEB_FILE" "src-tauri/target/release/bundle/deb/${NEW_NAME}"
-            echo "Renamed DEB to: ${NEW_NAME}"
-          fi
-
-          # Rename AppImage
-          APPIMAGE_FILE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage" | head -1)
-          if [ -f "$APPIMAGE_FILE" ]; then
-            NEW_NAME="PodLogs_${VERSION}_linux_amd64.AppImage"
-            mv "$APPIMAGE_FILE" "src-tauri/target/release/bundle/appimage/${NEW_NAME}"
-            echo "Renamed AppImage to: ${NEW_NAME}"
-          fi
-
-      - name: Upload Linux DEB
-        uses: actions/upload-artifact@v4
+          cargo build --release --locked
+          cargo packager --release --formats deb,appimage
+      - name: Rename and verify packages
+        env:
+          VERSION: ${{ needs.check-version.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          DEB_FILE=$(find target -type f -name '*.deb' -print -quit)
+          APPIMAGE_FILE=$(find target -type f -name '*.AppImage' -print -quit)
+          test -n "$DEB_FILE"
+          test -n "$APPIMAGE_FILE"
+          mv "$DEB_FILE" "$(dirname "$DEB_FILE")/PodLogs_${VERSION}_linux_${ARCH}.deb"
+          mv "$APPIMAGE_FILE" "$(dirname "$APPIMAGE_FILE")/PodLogs_${VERSION}_linux_${ARCH}.AppImage"
+      - uses: actions/upload-artifact@v4
         with:
-          name: linux-deb-amd64
-          path: src-tauri/target/release/bundle/deb/PodLogs_*.deb
+          name: linux-${{ matrix.arch }}
+          path: |
+            target/**/PodLogs_*_linux_${{ matrix.arch }}.deb
+            target/**/PodLogs_*_linux_${{ matrix.arch }}.AppImage
           if-no-files-found: error
 
-      - name: Upload Linux AppImage
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-appimage-amd64
-          path: src-tauri/target/release/bundle/appimage/PodLogs_*.AppImage
-          if-no-files-found: error
-
-  build-linux-arm64:
-    needs: check-version
+  build-windows:
+    needs: [check-version, test]
     if: needs.check-version.outputs.should_release == 'true'
-    runs-on: ubuntu-22.04-arm
+    continue-on-error: true
+    runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
         with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Linux dependencies
+          toolchain: 1.99.1
+      - name: Show pinned toolchain
+        run: rustup show
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --version 0.11.8 --locked
+      - name: Build NSIS installer
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            librsvg2-dev \
-            patchelf \
-            libssl-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+          cargo build --release --locked
+          cargo packager --release --formats nsis
+      - name: Rename and verify installer
+        shell: pwsh
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Rename artifacts with architecture
+          VERSION: ${{ needs.check-version.outputs.version }}
         run: |
-          VERSION=${{ needs.check-version.outputs.version }}
-
-          # Rename DEB
-          DEB_FILE=$(find src-tauri/target/release/bundle/deb -name "*.deb" | head -1)
-          if [ -f "$DEB_FILE" ]; then
-            NEW_NAME="PodLogs_${VERSION}_linux_arm64.deb"
-            mv "$DEB_FILE" "src-tauri/target/release/bundle/deb/${NEW_NAME}"
-            echo "Renamed DEB to: ${NEW_NAME}"
-          fi
-
-          # Rename AppImage
-          APPIMAGE_FILE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage" | head -1)
-          if [ -f "$APPIMAGE_FILE" ]; then
-            NEW_NAME="PodLogs_${VERSION}_linux_arm64.AppImage"
-            mv "$APPIMAGE_FILE" "src-tauri/target/release/bundle/appimage/${NEW_NAME}"
-            echo "Renamed AppImage to: ${NEW_NAME}"
-          fi
-
-      - name: Upload Linux ARM64 DEB
-        uses: actions/upload-artifact@v4
+          $file = Get-ChildItem target/release -Filter '*-setup.exe' | Select-Object -First 1
+          if (-not $file) { throw 'NSIS installer was not produced' }
+          Rename-Item $file.FullName "PodLogs_${env:VERSION}_windows_x64-setup.exe"
+      - uses: actions/upload-artifact@v4
         with:
-          name: linux-deb-arm64
-          path: src-tauri/target/release/bundle/deb/PodLogs_*.deb
+          name: windows-x64
+          path: target/**/PodLogs_*_windows_x64-setup.exe
           if-no-files-found: error
-
-      - name: Upload Linux ARM64 AppImage
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-appimage-arm64
-          path: src-tauri/target/release/bundle/appimage/PodLogs_*.AppImage
-          if-no-files-found: warn
 
   release:
-    needs: [check-version, build-macos, build-linux, build-linux-arm64]
-    if: |
-      always() &&
-      needs.check-version.outputs.should_release == 'true' &&
-      (needs.build-macos.result == 'success' || needs.build-linux.result == 'success')
-    runs-on: ubuntu-latest
+    needs: [check-version, build-macos, build-linux, build-windows]
+    if: always() && github.ref == 'refs/heads/main' && needs.check-version.outputs.should_release == 'true' && needs.build-macos.result == 'success' && needs.build-linux.result == 'success'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download all artifacts
+      - uses: actions/checkout@v4
+      - name: Download successful artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-
-      - name: List downloaded artifacts
-        run: |
-          echo "=== Downloaded artifacts ==="
-          find artifacts -type f | sort
-
+          merge-multiple: true
       - name: Prepare release files
         run: |
           mkdir -p release
-          find artifacts -type f \( -name "*.dmg" -o -name "*.deb" -o -name "*.AppImage" \) -exec cp {} release/ \;
-          echo "=== Release files ==="
-          ls -la release/
-
+          find artifacts -type f \( -name '*.dmg' -o -name '*.deb' -o -name '*.AppImage' -o -name '*windows_x64-setup.exe' \) -exec cp {} release/ \;
+          test -n "$(find release -type f -name '*.dmg' -print -quit)"
+          test "$(find release -type f -name '*.dmg' | wc -l)" -eq 2
+          test "$(find release -type f -name '*.deb' | wc -l)" -eq 2
+          test "$(find release -type f -name '*.AppImage' | wc -l)" -eq 2
+          ls -la release
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -275,28 +218,13 @@ jobs:
 
             ### Downloads
 
-            | Platform | Architecture | Download |
-            |----------|--------------|----------|
-            | macOS | Apple Silicon (M1/M2/M3/M4) | `PodLogs_${{ needs.check-version.outputs.version }}_macos_aarch64.dmg` |
-            | macOS | Intel (x64) | `PodLogs_${{ needs.check-version.outputs.version }}_macos_x64.dmg` |
-            | Linux | x64 (amd64) | `PodLogs_${{ needs.check-version.outputs.version }}_linux_amd64.deb` |
-            | Linux | ARM64 | `PodLogs_${{ needs.check-version.outputs.version }}_linux_arm64.deb` |
+            macOS: Apple Silicon and Intel DMG installers (macOS 12.0 Monterey or newer).
+            Linux: Debian and AppImage packages for amd64 and arm64. Linux has not been manually tested.
+            Windows: x64 NSIS installer when available. Windows has not been manually tested; this installer is unsigned and Windows SmartScreen may show a warning.
 
             ### Installation
 
-            **macOS:**
-            1. Download the `.dmg` file for your architecture
-            2. Open the DMG and drag PodLogs to Applications
-            3. On first launch, right-click and select "Open" to bypass Gatekeeper
-
-            **Linux (Debian/Ubuntu):**
-            ```bash
-            # x64
-            sudo dpkg -i PodLogs_${{ needs.check-version.outputs.version }}_linux_amd64.deb
-
-            # ARM64
-            sudo dpkg -i PodLogs_${{ needs.check-version.outputs.version }}_linux_arm64.deb
-            ```
+            macOS builds are unsigned and not notarized. On first launch, right-click PodLogs and select Open to bypass Gatekeeper.
 
             ### Requirements
             - A valid `~/.kube/config` file with cluster access

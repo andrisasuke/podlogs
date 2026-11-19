@@ -1,154 +1,45 @@
-# CLAUDE.md
+# PodLogs
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+PodLogs is a native Rust desktop Kubernetes pod log viewer built with GPUI. The repository is a single Rust binary crate; the UI and Kubernetes client run in the same process.
 
-## Project Overview
+## Development
 
-PodLogs is a Kubernetes pod log viewer desktop application built with Tauri 2.x. It uses a Rust backend for K8s API communication and a React/TypeScript frontend.
+Use the pinned Rust toolchain and locked dependencies:
 
-## Development Commands
-
-```bash
-# Install dependencies
-npm install
-
-# Start development (Vite + Tauri hot reload)
-npm run tauri dev
-
-# Build frontend only (faster iteration for UI work)
-npm run build
-
-# Build production app
-npm run tauri build
-
-# Check Rust compilation
-cd src-tauri && cargo check
-
-# Clean rebuild (needed after icon changes)
-cd src-tauri && cargo clean && cd .. && npm run tauri build
+```sh
+cargo run
+cargo test --locked
+cargo build --locked
 ```
+
+`cargo run` starts the desktop app and normally needs a working kubeconfig and graphical session. Packaging requires `cargo-packager` 0.11.8 (`cargo install cargo-packager --version 0.11.8 --locked`) and a release binary built first with `cargo build --release --locked`; `cargo packager --release` packages that binary. See README for platform-specific commands and Linux system libraries.
+
+Rust 1.99.1 is pinned in `rust-toolchain.toml`; `gpui-kit` is exactly pinned to `=0.9.1` in `Cargo.toml`. Treat upgrades to either pin as a separate task because they affect the compiler and native UI dependency stack.
 
 ## Architecture
 
-### Tech Stack
-- **Framework**: Tauri 2.x (Rust backend + system webview)
-- **Backend**: Rust with kube-rs for K8s API
-- **Frontend**: React 19.2 + TypeScript 5.7 + Vite 6 + Tailwind CSS 3.4
-- **State**: Zustand 5 (UI state with persistence) + TanStack Query 5 (server state)
+- `src/app/store.rs` owns application and selection state, actions, persistence updates, and the periodic tick. It starts due requests and ignores responses from outdated scopes.
+- `src/app/query.rs` is the per-resource cache and polling state machine. Query keys identify context, namespace, and resource; a fetch for a key does not overlap itself, and generation changes discard stale completions. The poll interval is measured from fetch start or activation; if a request is still running when polling is due, another fetch waits until it finishes.
+- `src/api.rs` defines the `Api` boundary and `KubeApi` implementation. Kubernetes operations run through the Tokio runtime; ordinary calls have a 30-second timeout, while cluster discovery has no timeout.
+- `src/k8s/` contains kube-rs operations, with response models in `src/models/`. `src/k8s/pods.rs` fetches referenced ConfigMaps; `src/k8s/pod_env.rs` expands the fetched data into environment declarations.
+- `src/app/` contains GPUI screen entities and app behavior. `src/ui/` contains reusable widgets and theme/text primitives. `src/ui/tracked_text.rs` draws tracked text for letter-spaced labels; use the shared `tracked` element where that typography is needed.
+- `src/persist.rs` loads and saves UI preferences and cluster/namespace selection under the platform configuration directory at `podlogs/state.json`.
 
-### Key Directories
-```
-src/                    # React frontend
-├── components/         # UI components
-│   ├── common/         # Button, Modal, Badge, Dropdown, Input, Drawer
-│   ├── layout/         # Sidebar, StatusBar, MainLayout
-│   ├── pods/           # PodList, PodDetails
-│   ├── deployments/    # DeploymentList
-│   └── logs/           # LogViewer, LogSearch, LogDetailModal
-├── hooks/              # useK8s.ts, useLogs.ts, useTheme.ts
-├── stores/             # clusterStore, uiStore, errorStore
-├── lib/                # tauri.ts (Tauri bridge), formatters.ts, constants.ts
-└── types/              # kubernetes.ts, logs.ts
+Data flows from a view action to `Store`, which updates selection or query state; the tick asks `Api` to fetch due Kubernetes data; results update the keyed query cache and notify observing views. Views render cached data and shared widgets. Log viewer and search tables use virtual lists so rendering work is limited to visible rows.
 
-src-tauri/              # Rust backend
-├── src/
-│   ├── k8s/            # K8s operations (client.rs, clusters.rs, pods.rs, logs.rs)
-│   ├── models/         # Rust structs matching frontend types
-│   └── error.rs        # Error types with Tauri serialization
-└── icons/              # App icons (icon.icns for macOS)
+When changing a query, preserve its key scope and generation behavior so data or errors from an old context/namespace cannot appear after a selection change. Keep cached data on background refresh errors; initial connection errors are surfaced through the app error dialog. Persistence stores preferences and selected context/namespace, not live Kubernetes resources.
 
-design/                 # Screenshots and design assets
-```
+## Navigation Flow
 
-### Data Flow
-1. React component calls hook (e.g., `usePods()`)
-2. Hook uses React Query to call `src/lib/tauri.ts` wrapper
-3. Tauri bridge invokes Rust command via IPC
-4. Rust uses kube-rs to call K8s API
-5. Response flows back through each layer
+1. Startup opens Deployments. When namespaces load, the saved namespace is used when available; otherwise `default` is preferred, then the first available namespace.
+2. Selecting a deployment opens Pods filtered to that deployment. Clearing the deployment shows all pods in the namespace.
+3. Opening a pod's Logs view shows that pod's logs; Back returns to Pods. Changing context or namespace clears the deployment. If the current view is Pods or Logs, it returns to Deployments; Log Search stays open.
+4. Log Search is a separate sidebar view. Settings and resource details open in drawers or dialogs over the current view.
 
-### Tauri Commands (Rust → Frontend)
-Commands are defined in `src-tauri/src/k8s/*.rs` and registered in `src-tauri/src/lib.rs`:
-- `get_clusters` - List K8s contexts from kubeconfig
-- `get_namespaces(context)` - List namespaces
-- `get_deployments(context, namespace)` - List deployments
-- `get_pods(context, namespace, deployment?)` - List pods
-- `get_pod_details(context, namespace, pod_name)` - Pod details with containers/env vars
-- `get_pod_logs(context, namespace, pod_name, container?, since_seconds?)` - Pod logs
-- `search_deployment_logs(context, namespace, deployment, keyword?, log_level?)` - Search logs
+## Pod Status Detection
 
-### State Management
+`src/k8s/pods.rs` determines pod status in this order: deletion timestamp (`Terminating`), container waiting/termination reasons, pod status reason (including `Evicted` and `UnexpectedAdmissionError`), then pod phase. `src/status.rs` maps status and readiness to display badge variants. Supported displayed conditions include Running, Pending, Succeeded, Failed, Unknown, CrashLoopBackOff, ImagePullBackOff, ErrImagePull, ContainerCreating, Terminating, Evicted, UnexpectedAdmissionError, and ContainerStatusUnknown.
 
-**clusterStore** (`src/stores/clusterStore.ts`):
-- `context` - Current K8s context/cluster
-- `namespace` - Current namespace
-- `deployment` - Selected deployment (null = show all)
-- `lastNamespaceByCluster` - Remembers last namespace per cluster (persisted)
+## Pod Environment Values
 
-**uiStore** (`src/stores/uiStore.ts`):
-- `currentView` - 'deployments' | 'pods' | 'logs' | 'search'
-- `theme` - 'light' | 'dark' | 'system'
-- `logViewerPod` - Pod currently viewing logs for
-- Persists: theme, sidebarCollapsed
-
-**errorStore** (`src/stores/errorStore.ts`):
-- `error` - Current connection error
-- `isTransitioning` - Flag to ignore errors during namespace/context switches
-
-### Error Handling
-- Global error store captures K8s connection errors
-- `useK8s` hooks report errors only on initial load (not background refetches)
-- `ConnectionError` component shows user-friendly error dialog
-- 30-second timeout on K8s API calls (frontend + backend)
-- Transition flag prevents spurious errors during namespace/context switches
-
-### Theme
-- Light theme: Solarized Light colors (`#FDF6E3` background)
-- Dark theme: Slate colors (`#0F172A` background)
-- CSS variables defined in `src/index.css`
-
-## Important Patterns
-
-### Navigation Flow
-1. User starts at Deployments view (default)
-2. Click deployment → Pods view (shows pods filtered by deployment)
-3. Click pod's Log button → Log viewer
-4. Click Back → Returns to Pods view (same deployment)
-5. Namespace/context change → Returns to Deployments view (deployment cleared)
-
-### Pod Status Detection
-Rust backend (`src-tauri/src/k8s/pods.rs`) detects statuses in order:
-1. Check `deletion_timestamp` → "Terminating"
-2. Check container statuses (waiting/terminated reasons)
-3. Check pod status reason (Evicted, UnexpectedAdmissionError)
-4. Fallback to pod phase
-
-Supported statuses: Running, Pending, Succeeded, Failed, Unknown, CrashLoopBackOff, ImagePullBackOff, ErrImagePull, ContainerCreating, Terminating, Evicted, UnexpectedAdmissionError, ContainerStatusUnknown
-
-### Searchable Dropdown
-Use `searchable` prop on Dropdown component:
-```tsx
-<Dropdown
-  options={options}
-  value={value}
-  onChange={onChange}
-  searchable
-  searchPlaceholder="Search..."
-/>
-```
-- Auto-disables autocapitalize, autocorrect, spellcheck
-- Filters options as user types
-
-### Adding a new K8s query hook
-1. Add Tauri command in `src-tauri/src/k8s/` and register in `lib.rs`
-2. Add TypeScript wrapper in `src/lib/tauri.ts`
-3. Create hook in `src/hooks/useK8s.ts` using `useQuery` with error handling
-
-### Modal behavior
-- Regular modals: dismissable via ESC, backdrop click, X button
-- Error dialog: `persistent` prop - only dismissable via buttons (not ESC/backdrop)
-
-### Icons (macOS)
-- Source: `design/icon_256x256.png`
-- Icons must fill ~82% of canvas for proper dock appearance
-- Regenerate with: create iconset → `iconutil -c icns`
+Pod details expand `envFrom.configMapRef` into current ConfigMap data, applying each declared prefix, and resolve `configMapKeyRef` values while retaining the declared environment variable name as an alias. These are values from the current Kubernetes configuration and can differ from the environment of an already-running container. Secret values remain masked; Secret `envFrom` is shown as a declaration, not expanded secret data. Missing or inaccessible ConfigMaps are represented as unresolved environment entries/issues.
